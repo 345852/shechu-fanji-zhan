@@ -1,0 +1,598 @@
+(function () {
+  const { W, H, GROUND, COLORS, LEVELS } = window.GameData;
+  const { clamp, rects } = window.GameUtils;
+
+  class Game {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext("2d");
+      this.ctx.imageSmoothingEnabled = false;
+      this.input = new window.Input();
+      this.player = new window.Player();
+      this.state = "title";
+      this.floorIndex = 0;
+      this.level = LEVELS[0];
+      this.worldWidth = 1800;
+      this.bossGate = 1410;
+      this.phase = "run";
+      this.enemies = [];
+      this.pickups = [];
+      this.projectiles = [];
+      this.particles = [];
+      this.slashes = [];
+      this.boss = null;
+      this.camera = { x: 0, y: 0 };
+      this.time = 0;
+      this.last = performance.now();
+      this.freezeTimer = 0;
+      this.screenShake = 0;
+      this.toiletUsed = false;
+      this.message = "";
+      this.messageTimer = 0;
+      this.stateTimer = 0;
+      this.stats = this.makeStats();
+    }
+
+    makeStats() {
+      return {
+        start: performance.now(),
+        deaths: 0,
+        moyu: 0,
+        damageTaken: 0,
+        cleared: false
+      };
+    }
+
+    start() {
+      requestAnimationFrame((now) => this.loop(now));
+    }
+
+    loop(now) {
+      const dt = Math.min(0.033, (now - this.last) / 1000 || 0);
+      this.last = now;
+      this.update(dt);
+      this.draw();
+      this.input.afterFrame();
+      requestAnimationFrame((next) => this.loop(next));
+    }
+
+    startGame() {
+      this.stats = this.makeStats();
+      this.floorIndex = 0;
+      this.player = new window.Player();
+      this.loadFloor(0, true);
+    }
+
+    loadFloor(index, first) {
+      this.floorIndex = index;
+      this.level = LEVELS[index];
+      this.state = "playing";
+      this.phase = "run";
+      this.worldWidth = 1800;
+      this.bossGate = 1410;
+      this.freezeTimer = 0;
+      this.screenShake = 0;
+      this.toiletUsed = false;
+      this.projectiles = [];
+      this.particles = [];
+      this.slashes = [];
+      this.boss = null;
+      this.enemies = this.level.enemies.map((enemy) => new window.Enemy(enemy.type, enemy.x));
+      this.pickups = this.level.pickups.map((pickup) => new window.Pickup(pickup.type, pickup.x));
+      this.player.resetForFloor(index);
+      if (first) {
+        this.player.health = this.player.maxHealth;
+        this.player.mind = this.player.maxMind;
+        this.player.rage = 0;
+        this.player.ammo = 8;
+      }
+      this.syncCameraToPlayer();
+      this.toast(`${this.level.floor} ${this.level.title}`);
+    }
+
+    syncCameraToPlayer() {
+      this.camera.x = this.player.x + this.player.w / 2 - W / 2;
+      this.camera.y = 0;
+    }
+
+    toast(text) {
+      this.message = text;
+      this.messageTimer = 2.2;
+    }
+
+    playerDown() {
+      this.stats.deaths += 1;
+      this.state = "down";
+      this.stateTimer = 2.2;
+      this.toast("倒下了，但房贷还没倒下");
+    }
+
+    floorClear() {
+      this.projectiles = [];
+      this.enemies = [];
+      this.freezeTimer = 0;
+      this.screenShake = 14;
+      if (this.floorIndex >= LEVELS.length - 1) {
+        this.state = "ending";
+        this.stats.cleared = true;
+        this.stateTimer = 0;
+        return;
+      }
+      this.state = "floorClear";
+      this.stateTimer = 2.4;
+      this.toast(`${this.level.bossName} 已下线`);
+    }
+
+    spawnPickup(type, x) {
+      this.pickups.push(new window.Pickup(type, x));
+    }
+
+    burst(x, y, color, amount) {
+      for (let i = 0; i < amount; i += 1) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 60 + Math.random() * 180;
+        this.particles.push(new window.Particle(x, y, Math.cos(a) * s, Math.sin(a) * s - 80, color, 0.35 + Math.random() * 0.35, 3 + Math.floor(Math.random() * 3)));
+      }
+    }
+
+    addSlash(area, dir) {
+      this.slashes.push({ area: { ...area }, dir, life: 0.13, maxLife: 0.13 });
+    }
+
+    hitEnemies(area, damage, knock) {
+      let hit = false;
+      this.enemies.forEach((enemy) => {
+        if (!enemy.dead && rects(area, enemy.hitbox)) {
+          enemy.takeDamage(damage, knock, this);
+          hit = true;
+        }
+      });
+      if (this.boss && !this.boss.dead && rects(area, this.boss.hitbox)) {
+        this.damageBoss(damage);
+        hit = true;
+      }
+      if (hit) this.screenShake = Math.max(this.screenShake, 4);
+    }
+
+    damageBoss(damage) {
+      if (!this.boss || this.boss.dead) return;
+      this.boss.takeDamage(damage, this);
+    }
+
+    update(dt) {
+      this.time += dt;
+      this.messageTimer = Math.max(0, this.messageTimer - dt);
+      this.screenShake = Math.max(0, this.screenShake - 45 * dt);
+      this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+
+      if (this.state === "title") {
+        if (this.input.consume("enter") || this.input.consume("j")) this.startGame();
+        return;
+      }
+
+      if (this.state === "paused") {
+        if (this.input.consume("enter") || this.input.consume("p")) this.state = "playing";
+        return;
+      }
+
+      if (this.state === "playing" && (this.input.consume("enter") || this.input.consume("p"))) {
+        this.state = "paused";
+        return;
+      }
+
+      if (this.state === "down") {
+        this.stateTimer -= dt;
+        if (this.stateTimer <= 0) this.loadFloor(this.floorIndex, false);
+        return;
+      }
+
+      if (this.state === "floorClear") {
+        this.stateTimer -= dt;
+        this.updateParticles(dt);
+        if (this.stateTimer <= 0) this.loadFloor(this.floorIndex + 1, false);
+        return;
+      }
+
+      if (this.state === "ending") {
+        this.stateTimer += dt;
+        this.updateParticles(dt);
+        return;
+      }
+
+      this.updatePlaying(dt);
+    }
+
+    updatePlaying(dt) {
+      this.player.update(dt, this);
+      this.applyHazards(dt);
+      this.updatePickups();
+
+      this.enemies.forEach((enemy) => enemy.update(dt, this));
+      this.enemies = this.enemies.filter((enemy) => !enemy.dead);
+
+      if (this.phase === "run" && this.player.x > this.bossGate) {
+        this.phase = "boss";
+        this.worldWidth = 1840;
+        this.boss = new window.Boss(this.level, this.floorIndex);
+        this.player.x = Math.min(this.player.x, 1470);
+        this.toast(`${this.level.bossName} 登场`);
+      }
+
+      if (this.boss) this.boss.update(dt, this);
+
+      this.projectiles.forEach((projectile) => {
+        projectile.update(dt, this);
+        if (projectile.dead) return;
+        if (projectile.owner === "player") {
+          let hit = false;
+          this.enemies.forEach((enemy) => {
+            if (!hit && !enemy.dead && rects(projectile, enemy.hitbox)) {
+              enemy.takeDamage(projectile.damage, projectile.vx > 0 ? 90 : -90, this);
+              hit = true;
+            }
+          });
+          if (!hit && this.boss && !this.boss.dead && rects(projectile, this.boss.hitbox)) {
+            this.damageBoss(projectile.damage);
+            hit = true;
+          }
+          if (hit) projectile.dead = true;
+        } else if (rects(projectile, this.player.hitbox)) {
+          this.player.takeDamage(projectile.damage, projectile.mindDamage, this, projectile.kind);
+          projectile.dead = true;
+        }
+      });
+      this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
+
+      this.updateParticles(dt);
+      this.slashes.forEach((slash) => { slash.life -= dt; });
+      this.slashes = this.slashes.filter((slash) => slash.life > 0);
+
+      this.syncCameraToPlayer();
+    }
+
+    updateParticles(dt) {
+      this.particles.forEach((particle) => particle.update(dt));
+      this.particles = this.particles.filter((particle) => particle.life > 0);
+    }
+
+    updatePickups() {
+      this.pickups.forEach((pickup) => {
+        if (pickup.used && pickup.type !== "toilet") return;
+        if (rects(this.player.hitbox, pickup)) pickup.apply(this.player, this);
+      });
+    }
+
+    applyHazards(dt) {
+      this.level.hazards.forEach((hazard) => {
+        if (hazard.type === "laser") {
+          const active = ((this.time + hazard.offset) % hazard.period) < hazard.period * 0.45;
+          if (!active) return;
+          const box = { x: hazard.x, y: hazard.y, w: hazard.w, h: 18 };
+          if (rects(this.player.hitbox, box)) this.player.takeDamage(9, 12, this, "laser");
+        } else if (hazard.type === "conveyor") {
+          const on = {
+            x: hazard.x,
+            y: hazard.y - 16,
+            w: hazard.w,
+            h: 30
+          };
+          if (this.player.onGround && rects(this.player.hitbox, on)) {
+            this.player.vx += hazard.dir * 290 * dt;
+          }
+        }
+      });
+    }
+
+    elapsedSeconds() {
+      return Math.max(0, Math.floor((performance.now() - this.stats.start) / 1000));
+    }
+
+    title() {
+      if (this.stats.damageTaken <= 0 && this.stats.deaths === 0 && this.stats.cleared) return "卷王终结者";
+      if (this.stats.moyu >= 10) return "老油条";
+      if (this.stats.moyu === 0 && this.stats.cleared) return "莽夫";
+      if (this.stats.deaths >= 5) return "职场复活甲";
+      return "精神自由人";
+    }
+
+    draw() {
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.clearRect(0, 0, W, H);
+      const shakeX = this.screenShake ? (Math.random() - 0.5) * this.screenShake : 0;
+      const shakeY = this.screenShake ? (Math.random() - 0.5) * this.screenShake : 0;
+      ctx.translate(Math.round(shakeX), Math.round(shakeY));
+
+      if (this.state === "title") {
+        this.drawTitle(ctx);
+      } else {
+        this.drawWorld(ctx);
+        this.drawHud(ctx);
+        if (this.state === "paused") this.drawOverlay(ctx, "暂停摸鱼中", "按 Enter 继续");
+        if (this.state === "down") this.drawOverlay(ctx, "被 KPI 放倒", "正在从工位复活");
+        if (this.state === "floorClear") this.drawOverlay(ctx, "楼层清空", "电梯上行中");
+        if (this.state === "ending") this.drawEnding(ctx);
+      }
+      ctx.restore();
+    }
+
+    drawTitle(ctx) {
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(0, 0, W, H);
+      this.drawCity(ctx, { sky: "#111827", back: "#26305f", floor: "#46516f", neon: COLORS.yellow }, 0);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "64px Courier New";
+      ctx.fillText("社畜反击战", 260, 146);
+      ctx.fillStyle = COLORS.pink;
+      ctx.fillRect(265, 166, 420, 10);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "22px Courier New";
+      ctx.fillText("从工位杀到顶楼，把辞职信拍在 CEO 脸上", 190, 220);
+      ctx.fillStyle = COLORS.cyan;
+      ctx.fillText("Enter 开始   Q/E 切招   1/2/3 直选   J 出招   K 订书机   L 大招", 115, 272);
+      ctx.fillStyle = "#fff7d8";
+      ctx.font = "18px Courier New";
+      ctx.fillText("5 层 Boss Rush · 双血条 · 咖啡续命 · 带薪拉屎点 · 摸鱼回血", 150, 320);
+      this.drawPixelWorker(ctx, 420, 370, 1, 3);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(510, 402, 140, 14);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "18px Courier New";
+      ctx.fillText("辞职信", 548, 416);
+    }
+
+    drawWorld(ctx) {
+      this.drawCity(ctx, this.level.theme, this.camera.x);
+      ctx.save();
+      ctx.translate(-Math.round(this.camera.x), -Math.round(this.camera.y));
+      const worldSpace = { x: 0, y: 0 };
+      this.drawOffice(ctx);
+      this.drawHazards(ctx);
+      this.pickups.forEach((pickup) => pickup.draw(ctx, worldSpace));
+      this.enemies.forEach((enemy) => enemy.draw(ctx, worldSpace));
+      if (this.boss) this.boss.draw(ctx, worldSpace);
+      this.projectiles.forEach((projectile) => projectile.draw(ctx, worldSpace));
+      this.slashes.forEach((slash) => this.drawSlash(ctx, slash));
+      this.player.draw(ctx, worldSpace);
+      this.particles.forEach((particle) => particle.draw(ctx, worldSpace));
+      ctx.restore();
+      if (this.phase === "boss") this.drawBossHp(ctx);
+      if (this.messageTimer > 0) this.drawToast(ctx);
+    }
+
+    drawCity(ctx, theme, camX) {
+      ctx.fillStyle = theme.sky;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = theme.back;
+      for (let i = -1; i < 9; i += 1) {
+        const x = Math.round(i * 150 - (camX || 0) * 0.16) % 1200;
+        const h = 130 + (i % 3) * 34;
+        ctx.fillRect(x, GROUND - 190 - h * 0.25, 96, h);
+        ctx.fillStyle = "rgba(255,255,255,.18)";
+        for (let y = GROUND - 170 - h * 0.25; y < GROUND - 30; y += 28) {
+          ctx.fillRect(x + 16, y, 12, 8);
+          ctx.fillRect(x + 52, y, 12, 8);
+        }
+        ctx.fillStyle = theme.back;
+      }
+      ctx.fillStyle = "rgba(255,255,255,.08)";
+      ctx.fillRect(0, 0, W, 90);
+      ctx.fillStyle = theme.neon;
+      ctx.fillRect(0, GROUND + 42, W, 7);
+    }
+
+    drawOffice(ctx) {
+      const floorLeft = this.camera.x - 80;
+      const floorWidth = W + 160;
+      ctx.fillStyle = this.level.theme.floor;
+      ctx.fillRect(floorLeft, GROUND, floorWidth, H - GROUND);
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(floorLeft, GROUND, floorWidth, 10);
+      for (let x = 120; x < this.bossGate - 60; x += 230) {
+        this.drawDesk(ctx, x, GROUND - 48);
+      }
+      ctx.fillStyle = "#fff7d8";
+      ctx.fillRect(this.bossGate, GROUND - 130, 70, 130);
+      ctx.fillStyle = COLORS.ink;
+      ctx.fillRect(this.bossGate + 10, GROUND - 112, 50, 112);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "16px Courier New";
+      ctx.fillText("BOSS", this.bossGate + 12, GROUND - 84);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(this.level.floor, 48, 64);
+    }
+
+    drawDesk(ctx, x, y) {
+      ctx.fillStyle = "#7c3f1d";
+      ctx.fillRect(x, y + 24, 86, 18);
+      ctx.fillStyle = "#c08457";
+      ctx.fillRect(x - 5, y + 16, 96, 12);
+      ctx.fillStyle = "#9ca3af";
+      ctx.fillRect(x + 20, y, 42, 24);
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(x + 24, y + 5, 34, 14);
+      ctx.fillStyle = COLORS.cyan;
+      ctx.fillRect(x + 28, y + 8, 24, 4);
+    }
+
+    drawHazards(ctx) {
+      this.level.hazards.forEach((hazard) => {
+        if (hazard.type === "laser") {
+          const active = ((this.time + hazard.offset) % hazard.period) < hazard.period * 0.45;
+          ctx.fillStyle = active ? COLORS.red : "rgba(220,38,38,.22)";
+          ctx.fillRect(hazard.x, hazard.y, hazard.w, 18);
+          ctx.fillStyle = active ? "#fff" : "rgba(255,255,255,.22)";
+          ctx.fillRect(hazard.x, hazard.y + 7, hazard.w, 4);
+          ctx.fillStyle = COLORS.ink;
+          ctx.fillRect(hazard.x - 10, hazard.y - 8, 10, 34);
+          ctx.fillRect(hazard.x + hazard.w, hazard.y - 8, 10, 34);
+        } else if (hazard.type === "conveyor") {
+          ctx.fillStyle = "#111827";
+          ctx.fillRect(hazard.x, hazard.y, hazard.w, 20);
+          ctx.fillStyle = "#6b7280";
+          for (let x = hazard.x + ((Math.floor(this.time * 70) * hazard.dir) % 28); x < hazard.x + hazard.w; x += 28) {
+            ctx.fillRect(x, hazard.y + 3, 16, 14);
+          }
+        }
+      });
+    }
+
+    drawSlash(ctx, slash) {
+      const a = clamp(slash.life / slash.maxLife, 0, 1);
+      const area = slash.area;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(area.x, area.y + 10, area.w, 8);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(area.x + (slash.dir > 0 ? area.w - 18 : 4), area.y + 4, 14, 22);
+      ctx.globalAlpha = 1;
+    }
+
+    drawHud(ctx) {
+      ctx.fillStyle = "rgba(5,8,22,.86)";
+      ctx.fillRect(12, 12, W - 24, 74);
+      ctx.strokeStyle = COLORS.yellow;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(12, 12, W - 24, 74);
+      ctx.font = "17px Courier New";
+      ctx.fillStyle = "#fff";
+      ctx.fillText(`${this.level.floor} ${this.level.title}`, 28, 34);
+      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 28, 64);
+      this.drawBar(ctx, 210, 26, 190, 14, this.player.health / this.player.maxHealth, COLORS.red, "体力");
+      this.drawBar(ctx, 210, 55, 190, 14, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
+      this.drawBar(ctx, 470, 40, 190, 16, this.player.rage / 100, COLORS.yellow, "怒气");
+      this.drawMoveCard(ctx, 675, 25);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(`倒下 ${this.stats.deaths}`, 830, 35);
+      ctx.fillText(`摸鱼 ${this.stats.moyu}`, 830, 64);
+      ctx.fillText(`${this.elapsedSeconds()}s`, 900, 50);
+      if (this.player.broken > 0) this.statusTag(ctx, "破防", 430, 66, COLORS.pink);
+      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 500, 66, COLORS.yellow);
+      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 570, 66, COLORS.orange);
+      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 640, 66, COLORS.green);
+    }
+
+    drawMoveCard(ctx, x, y) {
+      const move = this.player.currentMove();
+      const cd = this.player.specialCd;
+      ctx.fillStyle = COLORS.purple;
+      ctx.fillRect(x, y, 136, 42);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, 136, 42);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "13px Courier New";
+      ctx.fillText("Q/E 切招", x + 8, y + 14);
+      ctx.fillStyle = "#fff";
+      ctx.font = "14px Courier New";
+      ctx.fillText(`J ${move.name}`, x + 8, y + 29);
+      ctx.fillStyle = cd > 0 ? COLORS.pink : COLORS.cyan;
+      ctx.font = "12px Courier New";
+      ctx.fillText(cd > 0 ? `CD ${cd.toFixed(1)}s` : move.hint, x + 8, y + 40);
+    }
+
+    drawBar(ctx, x, y, w, h, ratio, color, label) {
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, Math.floor(w * clamp(ratio, 0, 1)), h);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = "#fff";
+      ctx.font = "13px Courier New";
+      ctx.fillText(label, x - 42, y + h - 2);
+    }
+
+    statusTag(ctx, text, x, y, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y - 15, 52, 18);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "13px Courier New";
+      ctx.fillText(text, x + 8, y - 2);
+    }
+
+    drawBossHp(ctx) {
+      if (!this.boss) return;
+      ctx.fillStyle = "rgba(17,24,39,.9)";
+      ctx.fillRect(220, 100, 520, 34);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(220, 100, 520, 34);
+      ctx.fillStyle = COLORS.red;
+      ctx.fillRect(226, 107, Math.floor(508 * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 20);
+      ctx.fillStyle = "#fff";
+      ctx.font = "17px Courier New";
+      const phase = this.floorIndex === 4 ? ` P${this.boss.phase}` : "";
+      ctx.fillText(`${this.boss.name}${phase}`, 232, 124);
+    }
+
+    drawToast(ctx) {
+      const text = this.message;
+      ctx.font = "18px Courier New";
+      const width = Math.max(180, ctx.measureText(text).width + 42);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(W / 2 - width / 2, 102, width, 32);
+      ctx.strokeStyle = COLORS.ink;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(W / 2 - width / 2, 102, width, 32);
+      ctx.fillStyle = COLORS.ink;
+      ctx.fillText(text, W / 2 - width / 2 + 20, 124);
+    }
+
+    drawOverlay(ctx, title, sub) {
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "44px Courier New";
+      ctx.fillText(title, 330, 242);
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Courier New";
+      ctx.fillText(sub, 385, 284);
+    }
+
+    drawEnding(ctx) {
+      ctx.fillStyle = "rgba(5,8,22,.74)";
+      ctx.fillRect(0, 0, W, H);
+      const t = this.stateTimer;
+      const workerX = Math.min(395, 120 + t * 145);
+      this.drawPixelWorker(ctx, workerX, 320, 1, 3);
+      ctx.fillStyle = "#7c3f1d";
+      ctx.fillRect(560, 330, 210, 46);
+      ctx.fillStyle = "#fff7d8";
+      const letterY = t < 2.4 ? 245 + t * 38 : 337;
+      ctx.fillRect(580, letterY, 118, 42);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "18px Courier New";
+      ctx.fillText("辞职信", 610, letterY + 27);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "36px Courier New";
+      ctx.fillText("恭喜你，重获自由！", 285, 142);
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Courier New";
+      ctx.fillText("明天……去下一家公司报到。", 314, 186);
+      ctx.fillStyle = COLORS.cyan;
+      ctx.fillText(`通关时间 ${this.elapsedSeconds()} 秒`, 362, 240);
+      ctx.fillText(`被打倒 ${this.stats.deaths} 次 · 摸鱼 ${this.stats.moyu} 次`, 325, 270);
+      ctx.fillStyle = COLORS.pink;
+      ctx.font = "26px Courier New";
+      ctx.fillText(`称号：${this.title()}`, 365, 455);
+    }
+
+    drawPixelWorker(ctx, x, y, dir, scale) {
+      const s = scale || 1;
+      ctx.fillStyle = "#f6c28b";
+      ctx.fillRect(x + 10 * s, y + 2 * s, 16 * s, 16 * s);
+      ctx.fillStyle = COLORS.cyan;
+      ctx.fillRect(x + 6 * s, y + 19 * s, 24 * s, 24 * s);
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(x + (dir > 0 ? 21 : 9) * s, y + 8 * s, 4 * s, 4 * s);
+      ctx.fillRect(x + 7 * s, y + 43 * s, 8 * s, 14 * s);
+      ctx.fillRect(x + 21 * s, y + 43 * s, 8 * s, 14 * s);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(x + (dir > 0 ? 27 : -18) * s, y + 29 * s, 26 * s, 9 * s);
+    }
+  }
+
+  window.BossRushGame = Game;
+}());

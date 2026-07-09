@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>社畜反击战</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --cabinet: #4502ff;
+      --panel: #fff7d8;
+      --yellow: #ffda14;
+      --pink: #ff4d8d;
+      --cyan: #27d4ff;
+      --green: #16a34a;
+      --danger: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255, 218, 20, .22), transparent 24%),
+        radial-gradient(circle at 80% 10%, rgba(39, 212, 255, .2), transparent 26%),
+        linear-gradient(135deg, #14102c 0%, #090a12 52%, #23112f 100%);
+      color: var(--ink);
+      font-family: "Courier New", monospace;
+      overflow: hidden;
+    }
+
+    .shell {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .cabinet {
+      width: min(1180px, 100%);
+      background: var(--panel);
+      border: 6px solid var(--ink);
+      box-shadow:
+        10px 10px 0 var(--cabinet),
+        18px 18px 0 var(--yellow),
+        26px 26px 0 var(--pink);
+      padding: 14px;
+    }
+
+    .marquee {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      color: #fff;
+      background: var(--ink);
+      border: 4px solid var(--cabinet);
+      box-shadow: inset 0 -5px 0 rgba(255,255,255,.08);
+      letter-spacing: 1px;
+    }
+
+    .marquee h1 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 42px);
+      line-height: .9;
+      color: var(--yellow);
+      text-shadow: 3px 3px 0 var(--pink);
+      white-space: nowrap;
+    }
+
+    .badge {
+      padding: 5px 9px;
+      border: 3px solid #fff;
+      color: #fff;
+      background: var(--cabinet);
+      font-size: 15px;
+      white-space: nowrap;
+    }
+
+    .screen-wrap {
+      position: relative;
+      border: 6px solid var(--ink);
+      background: #050816;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: #050816;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      color: #fff;
+      background: var(--ink);
+      border: 4px solid var(--cyan);
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+
+    .keys {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    kbd {
+      display: inline-grid;
+      place-items: center;
+      min-width: 30px;
+      height: 28px;
+      padding: 0 7px;
+      color: var(--ink);
+      background: var(--yellow);
+      border: 3px solid #fff;
+      box-shadow: 0 4px 0 var(--pink);
+      font-family: inherit;
+      font-weight: 700;
+    }
+
+    .hint {
+      color: #d7e4ff;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .shell { align-items: start; padding: 10px; }
+      .cabinet {
+        border-width: 4px;
+        box-shadow: 6px 6px 0 var(--cabinet), 12px 12px 0 var(--yellow);
+        padding: 8px;
+      }
+      .marquee { align-items: flex-start; flex-direction: column; }
+      .footer { align-items: flex-start; flex-direction: column; }
+      .hint { white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="cabinet" aria-label="社畜反击战游戏机">
+      <div class="marquee">
+        <h1>社畜反击战</h1>
+        <div class="badge">Boss Rush · 5F</div>
+      </div>
+
+      <div class="screen-wrap">
+        <canvas id="game" width="960" height="540" aria-label="社畜反击战游戏画面"></canvas>
+      </div>
+
+      <div class="footer">
+        <div class="keys">
+          <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>Space</kbd><kbd>S</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd>
+        </div>
+        <div class="hint">Q/E 切招 · 1/2/3 直选 · J 出招 · K 远程 · L 大招</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/data.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
