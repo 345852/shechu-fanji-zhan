@@ -1,6 +1,6 @@
 # 社畜反击战
 
-纯 HTML + CSS + JavaScript Canvas 横版 Boss Rush 小游戏。页面按手机小游戏比例设计，双击 `index.html` 或在手机浏览器打开即可游玩。
+纯 HTML + CSS + JavaScript Canvas 竖屏全屏 Boss Rush 小游戏。页面按手机小游戏全屏体验设计，双击 `index.html` 或在手机浏览器打开即可游玩。
 
 ## 文件结构
 

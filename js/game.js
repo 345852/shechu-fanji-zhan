@@ -337,6 +337,12 @@
       return "精神自由人";
     }
 
+    drawCenteredText(ctx, text, y, font, color) {
+      ctx.font = font;
+      ctx.fillStyle = color;
+      ctx.fillText(text, Math.round(W / 2 - ctx.measureText(text).width / 2), y);
+    }
+
     draw() {
       const ctx = this.ctx;
       ctx.save();
@@ -362,25 +368,20 @@
       ctx.fillStyle = "#050816";
       ctx.fillRect(0, 0, W, H);
       this.drawCity(ctx, { sky: "#111827", back: "#26305f", floor: "#46516f", neon: COLORS.yellow }, 0);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "64px Courier New";
-      ctx.fillText("社畜反击战", 260, 146);
+      this.drawCenteredText(ctx, "社畜反击战", 148, "46px Courier New", COLORS.yellow);
       ctx.fillStyle = COLORS.pink;
-      ctx.fillRect(265, 166, 420, 10);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "22px Courier New";
-      ctx.fillText("从工位杀到顶楼，把辞职信拍在 CEO 脸上", 190, 220);
-      ctx.fillStyle = COLORS.cyan;
-      ctx.fillText("点开始进入公司大楼，触屏按钮直接出招", 210, 272);
-      ctx.fillStyle = "#fff7d8";
-      ctx.font = "18px Courier New";
-      ctx.fillText("5 层 Boss Rush · 双血条 · 咖啡续命 · 带薪拉屎点 · 摸鱼回血", 150, 320);
-      this.drawPixelWorker(ctx, 420, 370, 1, 3);
+      ctx.fillRect(W / 2 - 128, 166, 256, 8);
+      this.drawCenteredText(ctx, "从工位杀到顶楼", 220, "18px Courier New", "#ffffff");
+      this.drawCenteredText(ctx, "把辞职信拍在 CEO 脸上", 246, "18px Courier New", "#ffffff");
+      this.drawCenteredText(ctx, "点开始进入公司大楼", 294, "18px Courier New", COLORS.cyan);
+      this.drawCenteredText(ctx, "触屏按钮直接出招", 322, "18px Courier New", COLORS.cyan);
+      this.drawCenteredText(ctx, "5 层 Boss Rush · 双血条", 362, "16px Courier New", "#fff7d8");
+      this.drawPixelWorker(ctx, W / 2 - 52, 410, 1, 3);
       ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(510, 402, 140, 14);
+      ctx.fillRect(W / 2 + 26, 442, 120, 14);
       ctx.fillStyle = COLORS.ink;
       ctx.font = "18px Courier New";
-      ctx.fillText("辞职信", 548, 416);
+      ctx.fillText("辞职信", W / 2 + 58, 456);
     }
 
     drawWorld(ctx) {
@@ -419,7 +420,7 @@
         ctx.fillStyle = theme.back;
       }
       ctx.fillStyle = "rgba(255,255,255,.08)";
-      ctx.fillRect(0, 0, W, 90);
+      ctx.fillRect(0, 0, W, 124);
       ctx.fillStyle = theme.neon;
       ctx.fillRect(0, GROUND + 42, W, 7);
     }
@@ -551,26 +552,27 @@
 
     drawHud(ctx) {
       ctx.fillStyle = "rgba(5,8,22,.86)";
-      ctx.fillRect(12, 12, W - 24, 74);
+      ctx.fillRect(8, 8, W - 16, 108);
       ctx.strokeStyle = COLORS.yellow;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(12, 12, W - 24, 74);
-      ctx.font = "17px Courier New";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(8, 8, W - 16, 108);
+      ctx.font = "14px Courier New";
       ctx.fillStyle = "#fff";
-      ctx.fillText(`${this.level.floor} ${this.level.title}`, 28, 34);
-      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 28, 64);
-      this.drawBar(ctx, 210, 26, 190, 14, this.player.health / this.player.maxHealth, COLORS.red, "体力");
-      this.drawBar(ctx, 210, 55, 190, 14, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
-      this.drawBar(ctx, 470, 40, 190, 16, this.player.rage / 100, COLORS.yellow, "怒气");
-      this.drawMoveCard(ctx, 675, 25);
+      ctx.fillText(`${this.level.floor} ${this.level.title}`, 18, 30);
+      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 18, 52);
+      this.drawBar(ctx, 58, 66, 116, 10, this.player.health / this.player.maxHealth, COLORS.red, "体力");
+      this.drawBar(ctx, 58, 84, 116, 10, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
+      this.drawBar(ctx, 58, 102, 116, 10, this.player.rage / 100, COLORS.yellow, "怒气");
+      this.drawMoveCard(ctx, 190, 48);
       ctx.fillStyle = "#fff";
-      ctx.fillText(`倒下 ${this.stats.deaths}`, 830, 35);
-      ctx.fillText(`摸鱼 ${this.stats.moyu}`, 830, 64);
-      ctx.fillText(`${this.elapsedSeconds()}s`, 900, 50);
-      if (this.player.broken > 0) this.statusTag(ctx, "破防", 430, 66, COLORS.pink);
-      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 500, 66, COLORS.yellow);
-      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 570, 66, COLORS.orange);
-      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 640, 66, COLORS.green);
+      ctx.font = "13px Courier New";
+      ctx.fillText(`倒${this.stats.deaths}`, 342, 40);
+      ctx.fillText(`鱼${this.stats.moyu}`, 342, 62);
+      ctx.fillText(`${this.elapsedSeconds()}s`, 342, 84);
+      if (this.player.broken > 0) this.statusTag(ctx, "破防", 12, 138, COLORS.pink);
+      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 70, 138, COLORS.yellow);
+      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 128, 138, COLORS.orange);
+      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 186, 138, COLORS.green);
     }
 
     drawMoveCard(ctx, x, y) {
@@ -616,71 +618,58 @@
     drawBossHp(ctx) {
       if (!this.boss) return;
       ctx.fillStyle = "rgba(17,24,39,.9)";
-      ctx.fillRect(220, 100, 520, 34);
+      ctx.fillRect(28, 126, W - 56, 32);
       ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(220, 100, 520, 34);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(28, 126, W - 56, 32);
       ctx.fillStyle = COLORS.red;
-      ctx.fillRect(226, 107, Math.floor(508 * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 20);
+      ctx.fillRect(34, 133, Math.floor((W - 68) * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 18);
       ctx.fillStyle = "#fff";
-      ctx.font = "17px Courier New";
+      ctx.font = "15px Courier New";
       const phase = this.floorIndex === 4 ? ` P${this.boss.phase}` : "";
-      ctx.fillText(`${this.boss.name}${phase}`, 232, 124);
+      ctx.fillText(`${this.boss.name}${phase}`, 38, 148);
     }
 
     drawToast(ctx) {
       const text = this.message;
-      ctx.font = "18px Courier New";
-      const width = Math.max(180, ctx.measureText(text).width + 42);
+      ctx.font = "16px Courier New";
+      const width = Math.min(W - 24, Math.max(180, ctx.measureText(text).width + 32));
       ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(W / 2 - width / 2, 102, width, 32);
+      ctx.fillRect(W / 2 - width / 2, 164, width, 30);
       ctx.strokeStyle = COLORS.ink;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(W / 2 - width / 2, 102, width, 32);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(W / 2 - width / 2, 164, width, 30);
       ctx.fillStyle = COLORS.ink;
-      ctx.fillText(text, W / 2 - width / 2 + 20, 124);
+      ctx.fillText(text, W / 2 - width / 2 + 16, 185);
     }
 
     drawOverlay(ctx, title, sub) {
       ctx.fillStyle = "rgba(0,0,0,.55)";
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "44px Courier New";
-      ctx.fillText(title, 330, 242);
-      ctx.fillStyle = "#fff";
-      ctx.font = "20px Courier New";
-      ctx.fillText(sub, 385, 284);
+      this.drawCenteredText(ctx, title, H / 2 - 28, "34px Courier New", COLORS.yellow);
+      this.drawCenteredText(ctx, sub, H / 2 + 12, "18px Courier New", "#fff");
     }
 
     drawEnding(ctx) {
       ctx.fillStyle = "rgba(5,8,22,.74)";
       ctx.fillRect(0, 0, W, H);
       const t = this.stateTimer;
-      const workerX = Math.min(395, 120 + t * 145);
-      this.drawPixelWorker(ctx, workerX, 320, 1, 3);
+      const workerX = Math.min(W / 2 - 62, 36 + t * 70);
+      this.drawPixelWorker(ctx, workerX, 400, 1, 3);
       ctx.fillStyle = "#7c3f1d";
-      ctx.fillRect(560, 330, 210, 46);
+      ctx.fillRect(W / 2 + 22, 430, 150, 42);
       ctx.fillStyle = "#fff7d8";
-      const letterY = t < 2.4 ? 245 + t * 38 : 337;
-      ctx.fillRect(580, letterY, 118, 42);
+      const letterY = t < 2.4 ? 292 + t * 58 : 436;
+      ctx.fillRect(W / 2 + 42, letterY, 96, 38);
       ctx.fillStyle = COLORS.ink;
-      ctx.font = "18px Courier New";
-      ctx.fillText("辞职信", 610, letterY + 27);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "36px Courier New";
-      ctx.fillText("恭喜你，重获自由！", 285, 142);
-      ctx.fillStyle = "#fff";
-      ctx.font = "20px Courier New";
-      ctx.fillText("明天……去下一家公司报到。", 314, 186);
-      ctx.fillStyle = COLORS.cyan;
-      ctx.fillText(`通关时间 ${this.elapsedSeconds()} 秒`, 362, 240);
-      ctx.fillText(`被打倒 ${this.stats.deaths} 次 · 摸鱼 ${this.stats.moyu} 次`, 325, 270);
-      ctx.fillStyle = COLORS.pink;
-      ctx.font = "26px Courier New";
-      ctx.fillText(`称号：${this.title()}`, 365, 455);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "20px Courier New";
-      ctx.fillText("点开始再来一轮", 404, 492);
+      ctx.font = "16px Courier New";
+      ctx.fillText("辞职信", W / 2 + 66, letterY + 25);
+      this.drawCenteredText(ctx, "恭喜你，重获自由！", 144, "30px Courier New", COLORS.yellow);
+      this.drawCenteredText(ctx, "明天去下一家公司报到", 188, "18px Courier New", "#fff");
+      this.drawCenteredText(ctx, `通关时间 ${this.elapsedSeconds()} 秒`, 254, "18px Courier New", COLORS.cyan);
+      this.drawCenteredText(ctx, `被打倒 ${this.stats.deaths} 次 · 摸鱼 ${this.stats.moyu} 次`, 284, "18px Courier New", COLORS.cyan);
+      this.drawCenteredText(ctx, `称号：${this.title()}`, 548, "24px Courier New", COLORS.pink);
+      this.drawCenteredText(ctx, "点开始再来一轮", 596, "20px Courier New", COLORS.yellow);
     }
 
     drawPixelWorker(ctx, x, y, dir, scale) {
