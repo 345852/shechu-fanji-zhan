@@ -1,7 +1,7 @@
 (function () {
   const W = 430;
   const H = 760;
-  const GROUND = 590;
+  const GROUND = 535;
 
   const COLORS = {
     ink: "#111827",
