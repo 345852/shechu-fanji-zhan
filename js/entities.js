@@ -126,9 +126,10 @@
     apply(player, game) {
       if (this.used && this.type !== "toilet") return;
       if (this.type === "coffee") {
-        player.health = clamp(player.health + 28, 0, player.maxHealth);
+        player.health = clamp(player.health + 42, 0, player.maxHealth);
         player.speedBoost = 5;
         game.toast("咖啡续命：体力恢复，脚下生风");
+        game.floatText("+42 体力", player.x + player.w / 2, player.y - 8, COLORS.green);
         this.used = true;
       } else if (this.type === "stapler") {
         player.ammo = clamp(player.ammo + 5, 0, player.maxAmmo);
@@ -183,10 +184,10 @@
       this.vy = 0;
       this.dir = 1;
       this.onGround = false;
-      this.maxHealth = 100;
-      this.maxMind = 100;
-      this.health = 100;
-      this.mind = 100;
+      this.maxHealth = 130;
+      this.maxMind = 120;
+      this.health = 130;
+      this.mind = 120;
       this.rage = 0;
       this.ammo = 8;
       this.maxAmmo = 12;
@@ -221,8 +222,8 @@
       this.vx = 0;
       this.vy = 0;
       this.dir = 1;
-      this.health = clamp(this.health + 18, 0, this.maxHealth);
-      this.mind = clamp(this.mind + 24, 0, this.maxMind);
+      this.health = clamp(this.health + 32, 0, this.maxHealth);
+      this.mind = clamp(this.mind + 38, 0, this.maxMind);
       this.rage = clamp(this.rage + 18, 0, 100);
       this.ammo = clamp(this.ammo + 3 + floorIndex, 0, this.maxAmmo);
       this.dead = false;
@@ -233,7 +234,7 @@
       this.specialCd = 0;
       this.parryTimer = 0;
       this.thrustTimer = 0;
-      this.invuln = 1.2;
+      this.invuln = 1.4;
     }
 
     get hitbox() {
@@ -364,9 +365,20 @@
         w: range,
         h: 34
       };
-      const damage = (16 + this.combo * 4) * this.attackScale;
-      game.hitEnemies(area, damage, this.combo === 3 ? 90 * this.dir : 25 * this.dir);
-      game.addSlash(area, this.dir);
+      const damage = (18 + this.combo * 5) * this.attackScale;
+      const label = this.combo === 3 ? "键盘重击" : `键盘连击${this.combo}`;
+      game.floatText(label, this.x + this.w / 2 + this.dir * 44, this.y + 8, this.combo === 3 ? COLORS.pink : COLORS.yellow);
+      game.hitEnemies(area, damage, this.combo === 3 ? 100 * this.dir : 35 * this.dir, {
+        label: `-${Math.round(damage)}`,
+        color: this.combo === 3 ? COLORS.pink : COLORS.yellow
+      });
+      game.addSlash(area, this.dir, {
+        kind: "combo",
+        combo: this.combo,
+        color: this.combo === 3 ? COLORS.pink : COLORS.yellow,
+        label,
+        life: this.combo === 3 ? 0.24 : 0.18
+      });
     }
 
     demandReflect(game) {
@@ -385,6 +397,13 @@
         h: 42
       };
       game.hitEnemies(area, 8 * this.attackScale, 35 * this.dir);
+      game.addSlash(area, this.dir, {
+        kind: "reflect",
+        color: COLORS.cyan,
+        label: "需求反弹",
+        life: 0.36
+      });
+      game.floatText("需求反弹", this.x + this.w / 2 + this.dir * 34, this.y + 3, COLORS.cyan);
       game.burst(this.x + this.w / 2 + this.dir * 28, this.y + 28, COLORS.cyan, 6);
     }
 
@@ -411,6 +430,7 @@
         this.rage = clamp(this.rage + reflected * 10, 0, 100);
         game.screenShake = Math.max(game.screenShake, 6);
         game.toast(`需求反弹 ×${reflected}`);
+        game.floatText(`反弹 ×${reflected}`, this.x + this.w / 2 + this.dir * 46, this.y - 8, COLORS.cyan);
       }
     }
 
@@ -430,8 +450,18 @@
         w: 96,
         h: 38
       };
-      game.hitEnemies(area, 38 * this.attackScale, 150 * this.dir);
-      game.addSlash(area, this.dir);
+      const damage = 46 * this.attackScale;
+      game.floatText("离职信突刺", this.x + this.w / 2 + this.dir * 58, this.y + 6, COLORS.pink);
+      game.hitEnemies(area, damage, 170 * this.dir, {
+        label: `-${Math.round(damage)}`,
+        color: COLORS.pink
+      });
+      game.addSlash(area, this.dir, {
+        kind: "resign",
+        color: COLORS.pink,
+        label: "离职信突刺",
+        life: 0.34
+      });
       game.burst(this.x + this.w / 2 + this.dir * 52, this.y + 26, COLORS.yellow, 9);
     }
 
@@ -453,6 +483,7 @@
         damage: 18 * this.attackScale,
         color: COLORS.cyan
       }));
+      game.floatText("订书机", this.x + this.w / 2 + this.dir * 36, this.y + 8, COLORS.cyan);
     }
 
     ultimate(game) {
@@ -464,28 +495,67 @@
       game.freezeTimer = 3;
       game.screenShake = 18;
       game.toast("已读不回：全场冻结 3 秒");
+      game.floatText("已读不回", this.x + this.w / 2, this.y - 12, COLORS.yellow);
       if (game.boss) game.damageBoss(70);
       game.enemies.forEach((enemy) => enemy.takeDamage(70, 0, game));
     }
 
     takeDamage(amount, mindDamage, game, source) {
       if (this.invuln > 0 || this.dead) return;
+      if (this.parryTimer > 0) {
+        this.rage = clamp(this.rage + 10, 0, 100);
+        this.invuln = 0.4;
+        game.screenShake = Math.max(game.screenShake, 5);
+        game.burst(this.x + this.w / 2 + this.dir * 24, this.y + 24, COLORS.cyan, 8);
+        game.floatText("挡下", this.x + this.w / 2, this.y - 8, COLORS.cyan);
+        return;
+      }
       let final = amount;
       if (this.crouching && source === "pancake") final *= 0.25;
-      if (this.moyu) final *= 1.35;
+      if (this.moyu) final *= 1.2;
+      final *= source === "laser" ? 0.72 : 0.68;
+      const finalMind = (mindDamage || 0) * 0.65;
       game.stats.damageTaken += final;
       this.health -= final;
-      this.mind -= mindDamage || 0;
-      this.rage = clamp(this.rage + final * 0.55 + (mindDamage || 0) * 0.3, 0, 100);
-      this.invuln = 0.85;
-      this.vx = -this.dir * 170;
+      this.mind -= finalMind;
+      this.rage = clamp(this.rage + final * 0.7 + finalMind * 0.36, 0, 100);
+      this.invuln = 1.15;
+      this.vx = -this.dir * 120;
       game.screenShake = Math.max(game.screenShake, 8);
       game.burst(this.x + this.w / 2, this.y + 20, COLORS.red, 8);
+      game.floatText(`-${Math.round(final)}`, this.x + this.w / 2, this.y - 10, COLORS.red);
+    }
+
+    drawVitals(ctx, x, y) {
+      const barW = 70;
+      const barH = 7;
+      const left = Math.round(x + this.w / 2 - barW / 2);
+      const top = Math.round(y - 30);
+      const hp = Math.ceil(clamp(this.health, 0, this.maxHealth));
+      const ratio = clamp(this.health / this.maxHealth, 0, 1);
+      const text = `${hp}/${this.maxHealth}`;
+
+      ctx.fillStyle = "rgba(5,8,22,.88)";
+      ctx.fillRect(left - 5, top - 12, barW + 10, 24);
+      ctx.strokeStyle = COLORS.yellow;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(left - 5, top - 12, barW + 10, 24);
+      ctx.fillStyle = "#3f1117";
+      ctx.fillRect(left, top, barW, barH);
+      ctx.fillStyle = ratio < 0.3 ? COLORS.red : "#ef4444";
+      ctx.fillRect(left, top, Math.floor(barW * ratio), barH);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(left, top, barW, barH);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "11px Courier New";
+      ctx.fillText(text, left + Math.max(2, Math.floor((barW - text.length * 6) / 2)), top - 3);
     }
 
     draw(ctx, cam) {
       const x = Math.round(this.x - cam.x);
       const y = Math.round(this.y - cam.y);
+      this.drawVitals(ctx, x, y);
       if (this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0) return;
       const crouch = this.crouching ? 14 : 0;
       ctx.fillStyle = "#f6c28b";
@@ -556,8 +626,8 @@
       }
       this.x += this.vx * dt;
       if (dist < 42 && this.attackCd <= 0) {
-        game.player.takeDamage(this.type === "hr" ? 10 : 8, this.type === "hr" ? 14 : 8, game, "minion");
-        this.attackCd = 1.1;
+        game.player.takeDamage(this.type === "hr" ? 7 : 5, this.type === "hr" ? 9 : 5, game, "minion");
+        this.attackCd = 1.35;
       }
     }
 
@@ -645,7 +715,7 @@
       }
       this.actionText = this.attackName(attack);
       this.actionTimer = 1.1;
-      this.attackCd = clamp(1.65 - this.floorIndex * 0.12 - this.phase * 0.12, 0.82, 1.8);
+      this.attackCd = clamp(1.9 - this.floorIndex * 0.08 - this.phase * 0.08, 1.05, 2.05);
 
       if (attack === "weeklyDart") {
         for (let i = 0; i < 3; i += 1) {
@@ -666,7 +736,7 @@
       } else if (attack === "meetingTrap") {
         if (Math.abs(game.player.x - this.x) < 360) {
           game.player.meetingTrap = 3;
-          game.player.mind -= 12;
+          game.player.mind -= 8;
           game.toast("临时会议：你被困住了");
         }
       } else if (attack === "blackPot") {
@@ -686,7 +756,7 @@
         }));
       } else if (attack === "optionCheck") {
         game.player.attackDebuff = 6;
-        game.player.mind -= 10;
+        game.player.mind -= 7;
         game.toast("期权空头支票：攻击力缩水");
       } else if (attack === "scythe") {
         game.projectiles.push(new Projectile({

@@ -20,6 +20,7 @@
       this.projectiles = [];
       this.particles = [];
       this.slashes = [];
+      this.floatingTexts = [];
       this.boss = null;
       this.camera = { x: 0, y: 0 };
       this.time = 0;
@@ -63,6 +64,11 @@
       this.loadFloor(0, true);
     }
 
+    restartAfterEnding() {
+      this.startGame();
+      this.toast("新一轮打工开始");
+    }
+
     loadFloor(index, first) {
       this.floorIndex = index;
       this.level = LEVELS[index];
@@ -76,6 +82,7 @@
       this.projectiles = [];
       this.particles = [];
       this.slashes = [];
+      this.floatingTexts = [];
       this.boss = null;
       this.enemies = this.level.enemies.map((enemy) => new window.Enemy(enemy.type, enemy.x));
       this.pickups = this.level.pickups.map((pickup) => new window.Pickup(pickup.type, pickup.x));
@@ -135,20 +142,40 @@
       }
     }
 
-    addSlash(area, dir) {
-      this.slashes.push({ area: { ...area }, dir, life: 0.13, maxLife: 0.13 });
+    floatText(text, x, y, color) {
+      this.floatingTexts.push({
+        text,
+        x,
+        y,
+        color: color || "#fff",
+        life: 0.75,
+        maxLife: 0.75,
+        vy: -34
+      });
     }
 
-    hitEnemies(area, damage, knock) {
+    addSlash(area, dir, opts) {
+      const data = opts || {};
+      const life = data.life || 0.18;
+      this.slashes.push({ area: { ...area }, dir, life, maxLife: life, ...data });
+    }
+
+    hitEnemies(area, damage, knock, feedback) {
       let hit = false;
       this.enemies.forEach((enemy) => {
         if (!enemy.dead && rects(area, enemy.hitbox)) {
           enemy.takeDamage(damage, knock, this);
+          if (feedback) {
+            this.floatText(feedback.label || `-${Math.round(damage)}`, enemy.x + enemy.w / 2, enemy.y - 8, feedback.color || COLORS.yellow);
+          }
           hit = true;
         }
       });
       if (this.boss && !this.boss.dead && rects(area, this.boss.hitbox)) {
         this.damageBoss(damage);
+        if (feedback) {
+          this.floatText(feedback.label || `-${Math.round(damage)}`, this.boss.x + this.boss.w / 2, this.boss.y - 10, feedback.color || COLORS.yellow);
+        }
         hit = true;
       }
       if (hit) this.screenShake = Math.max(this.screenShake, 4);
@@ -189,13 +216,19 @@
       if (this.state === "floorClear") {
         this.stateTimer -= dt;
         this.updateParticles(dt);
+        this.updateFloatingTexts(dt);
         if (this.stateTimer <= 0) this.loadFloor(this.floorIndex + 1, false);
         return;
       }
 
       if (this.state === "ending") {
+        if (this.input.consume("enter") || this.input.consume("j")) {
+          this.restartAfterEnding();
+          return;
+        }
         this.stateTimer += dt;
         this.updateParticles(dt);
+        this.updateFloatingTexts(dt);
         return;
       }
 
@@ -244,6 +277,7 @@
       this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
 
       this.updateParticles(dt);
+      this.updateFloatingTexts(dt);
       this.slashes.forEach((slash) => { slash.life -= dt; });
       this.slashes = this.slashes.filter((slash) => slash.life > 0);
 
@@ -253,6 +287,14 @@
     updateParticles(dt) {
       this.particles.forEach((particle) => particle.update(dt));
       this.particles = this.particles.filter((particle) => particle.life > 0);
+    }
+
+    updateFloatingTexts(dt) {
+      this.floatingTexts.forEach((item) => {
+        item.life -= dt;
+        item.y += item.vy * dt;
+      });
+      this.floatingTexts = this.floatingTexts.filter((item) => item.life > 0);
     }
 
     updatePickups() {
@@ -308,7 +350,7 @@
       } else {
         this.drawWorld(ctx);
         this.drawHud(ctx);
-        if (this.state === "paused") this.drawOverlay(ctx, "暂停摸鱼中", "按 Enter 继续");
+        if (this.state === "paused") this.drawOverlay(ctx, "暂停摸鱼中", "点开始继续");
         if (this.state === "down") this.drawOverlay(ctx, "被 KPI 放倒", "正在从工位复活");
         if (this.state === "floorClear") this.drawOverlay(ctx, "楼层清空", "电梯上行中");
         if (this.state === "ending") this.drawEnding(ctx);
@@ -329,7 +371,7 @@
       ctx.font = "22px Courier New";
       ctx.fillText("从工位杀到顶楼，把辞职信拍在 CEO 脸上", 190, 220);
       ctx.fillStyle = COLORS.cyan;
-      ctx.fillText("Enter 开始   Q/E 切招   1/2/3 直选   J 出招   K 订书机   L 大招", 115, 272);
+      ctx.fillText("点开始进入公司大楼，触屏按钮直接出招", 210, 272);
       ctx.fillStyle = "#fff7d8";
       ctx.font = "18px Courier New";
       ctx.fillText("5 层 Boss Rush · 双血条 · 咖啡续命 · 带薪拉屎点 · 摸鱼回血", 150, 320);
@@ -355,6 +397,7 @@
       this.slashes.forEach((slash) => this.drawSlash(ctx, slash));
       this.player.draw(ctx, worldSpace);
       this.particles.forEach((particle) => particle.draw(ctx, worldSpace));
+      this.floatingTexts.forEach((item) => this.drawFloatingText(ctx, item));
       ctx.restore();
       if (this.phase === "boss") this.drawBossHp(ctx);
       if (this.messageTimer > 0) this.drawToast(ctx);
@@ -440,11 +483,69 @@
     drawSlash(ctx, slash) {
       const a = clamp(slash.life / slash.maxLife, 0, 1);
       const area = slash.area;
+      const tipX = slash.dir > 0 ? area.x + area.w : area.x;
       ctx.globalAlpha = a;
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(area.x, area.y + 10, area.w, 8);
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(area.x + (slash.dir > 0 ? area.w - 18 : 4), area.y + 4, 14, 22);
+      if (slash.kind === "reflect") {
+        const sx = slash.dir > 0 ? area.x + area.w - 10 : area.x - 8;
+        ctx.fillStyle = "rgba(39,212,255,.45)";
+        ctx.fillRect(sx - 6, area.y - 6, 24, area.h + 14);
+        ctx.fillStyle = COLORS.cyan;
+        ctx.fillRect(sx, area.y - 10, 8, area.h + 22);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(sx + 3, area.y - 2, 2, area.h + 4);
+        ctx.fillStyle = COLORS.yellow;
+        for (let i = 0; i < 4; i += 1) {
+          ctx.fillRect(sx + slash.dir * (15 + i * 9), area.y + 4 + i * 9, 6, 6);
+        }
+      } else if (slash.kind === "resign") {
+        const lead = slash.dir > 0 ? area.x + area.w - 12 : area.x - 34;
+        ctx.fillStyle = "rgba(255,218,20,.35)";
+        ctx.fillRect(area.x - 8, area.y + 8, area.w + 18, 18);
+        ctx.fillStyle = COLORS.pink;
+        ctx.fillRect(area.x + (slash.dir > 0 ? 4 : 22), area.y + 2, area.w - 20, 8);
+        ctx.fillStyle = "#fff7d8";
+        ctx.fillRect(lead, area.y + 7, 46, 24);
+        ctx.fillStyle = COLORS.ink;
+        ctx.font = "12px Courier New";
+        ctx.fillText("辞职", lead + 9, area.y + 23);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(tipX - (slash.dir > 0 ? 2 : 18), area.y + 1, 18, area.h);
+      } else {
+        const combo = slash.combo || 1;
+        ctx.fillStyle = combo === 3 ? COLORS.pink : COLORS.yellow;
+        for (let i = 0; i < combo + 1; i += 1) {
+          const y = area.y + 5 + i * 8;
+          const inset = i * 7;
+          ctx.fillRect(area.x + inset, y, Math.max(16, area.w - inset), 7);
+        }
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(tipX + (slash.dir > 0 ? -22 : 8), area.y + 2, 15, area.h - 4);
+        if (combo === 3) {
+          ctx.fillStyle = COLORS.cyan;
+          ctx.fillRect(tipX + (slash.dir > 0 ? -10 : 0), area.y - 12, 10, area.h + 22);
+        }
+      }
+      if (slash.label) {
+        ctx.fillStyle = "rgba(5,8,22,.82)";
+        ctx.fillRect(area.x, area.y - 24, Math.min(96, Math.max(56, slash.label.length * 13)), 18);
+        ctx.fillStyle = slash.color || COLORS.yellow;
+        ctx.font = "13px Courier New";
+        ctx.fillText(slash.label, area.x + 5, area.y - 10);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    drawFloatingText(ctx, item) {
+      const a = clamp(item.life / item.maxLife, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.font = "16px Courier New";
+      const width = Math.max(28, ctx.measureText(item.text).width + 12);
+      const x = Math.round(item.x - width / 2);
+      const y = Math.round(item.y);
+      ctx.fillStyle = "rgba(5,8,22,.84)";
+      ctx.fillRect(x, y - 16, width, 20);
+      ctx.fillStyle = item.color;
+      ctx.fillText(item.text, x + 6, y - 1);
       ctx.globalAlpha = 1;
     }
 
@@ -482,10 +583,10 @@
       ctx.strokeRect(x, y, 136, 42);
       ctx.fillStyle = COLORS.yellow;
       ctx.font = "13px Courier New";
-      ctx.fillText("Q/E 切招", x + 8, y + 14);
+      ctx.fillText("当前招式", x + 8, y + 14);
       ctx.fillStyle = "#fff";
       ctx.font = "14px Courier New";
-      ctx.fillText(`J ${move.name}`, x + 8, y + 29);
+      ctx.fillText(move.name, x + 8, y + 29);
       ctx.fillStyle = cd > 0 ? COLORS.pink : COLORS.cyan;
       ctx.font = "12px Courier New";
       ctx.fillText(cd > 0 ? `CD ${cd.toFixed(1)}s` : move.hint, x + 8, y + 40);
@@ -577,6 +678,9 @@
       ctx.fillStyle = COLORS.pink;
       ctx.font = "26px Courier New";
       ctx.fillText(`称号：${this.title()}`, 365, 455);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "20px Courier New";
+      ctx.fillText("点开始再来一轮", 404, 492);
     }
 
     drawPixelWorker(ctx, x, y, dir, scale) {

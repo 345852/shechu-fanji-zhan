@@ -12,20 +12,19 @@
         if (["left", "right", "up", "space", "s", "j", "k", "l", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) {
           event.preventDefault();
         }
-        if (!this.down[key]) {
-          this.pressed[key] = true;
-          if (key === "left" || key === "right") this.checkDash(key);
-        }
-        this.down[key] = true;
+        this.setKey(key, true);
       });
 
       window.addEventListener("keyup", (event) => {
         const key = this.normalize(event.key);
-        if (key) this.down[key] = false;
+        if (key) this.setKey(key, false);
       });
+
+      this.bindTouchControls();
     }
 
     normalize(key) {
+      if (["left", "right", "up", "space", "s", "j", "k", "l", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) return key;
       if (key === "ArrowLeft" || key === "a" || key === "A") return "left";
       if (key === "ArrowRight" || key === "d" || key === "D") return "right";
       if (key === "ArrowUp" || key === "w" || key === "W") return "up";
@@ -42,6 +41,51 @@
       if (key === "Enter") return "enter";
       if (key === "p" || key === "P") return "p";
       return "";
+    }
+
+    setKey(key, isDown) {
+      if (!key) return;
+      if (isDown) {
+        if (!this.down[key]) {
+          this.pressed[key] = true;
+          if (key === "left" || key === "right") this.checkDash(key);
+        }
+        this.down[key] = true;
+      } else {
+        this.down[key] = false;
+      }
+    }
+
+    bindTouchControls() {
+      if (!window.document || !window.document.querySelectorAll) return;
+      const buttons = Array.from(window.document.querySelectorAll("[data-press]"));
+      buttons.forEach((button) => {
+        const keys = String(button.dataset.press || "")
+          .split(/\s+/)
+          .map((key) => this.normalize(key))
+          .filter(Boolean);
+        if (keys.length === 0) return;
+
+        const press = (event) => {
+          event.preventDefault();
+          button.classList.add("is-pressed");
+          if (event.pointerId !== undefined && button.setPointerCapture) {
+            try { button.setPointerCapture(event.pointerId); } catch (error) { /* ignore released pointers */ }
+          }
+          keys.forEach((key) => this.setKey(key, true));
+        };
+        const release = (event) => {
+          event.preventDefault();
+          button.classList.remove("is-pressed");
+          keys.forEach((key) => this.setKey(key, false));
+        };
+
+        button.addEventListener("pointerdown", press);
+        button.addEventListener("pointerup", release);
+        button.addEventListener("pointercancel", release);
+        button.addEventListener("lostpointercapture", release);
+        button.addEventListener("contextmenu", (event) => event.preventDefault());
+      });
     }
 
     checkDash(key) {

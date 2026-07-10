@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>社畜反击战</title>
   <style>
     :root {
@@ -14,6 +14,7 @@
       --cyan: #27d4ff;
       --green: #16a34a;
       --danger: #dc2626;
+      --button: #f8fafc;
     }
 
     * { box-sizing: border-box; }
@@ -22,50 +23,57 @@
     body {
       min-height: 100%;
       margin: 0;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(255, 218, 20, .22), transparent 24%),
-        radial-gradient(circle at 80% 10%, rgba(39, 212, 255, .2), transparent 26%),
-        linear-gradient(135deg, #14102c 0%, #090a12 52%, #23112f 100%);
+      background: linear-gradient(180deg, #050816 0%, #14102c 54%, #090a12 100%);
       color: var(--ink);
       font-family: "Courier New", monospace;
       overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
     }
+
+    button { font: inherit; }
 
     .shell {
       min-height: 100dvh;
       display: grid;
       place-items: center;
-      padding: 18px;
+      padding:
+        max(10px, env(safe-area-inset-top))
+        max(10px, env(safe-area-inset-right))
+        max(10px, env(safe-area-inset-bottom))
+        max(10px, env(safe-area-inset-left));
     }
 
     .cabinet {
-      width: min(1180px, 100%);
+      width: min(430px, 100%);
+      max-height: calc(100dvh - 20px);
+      display: flex;
+      flex-direction: column;
       background: var(--panel);
-      border: 6px solid var(--ink);
+      border: 4px solid var(--ink);
       box-shadow:
-        10px 10px 0 var(--cabinet),
-        18px 18px 0 var(--yellow),
-        26px 26px 0 var(--pink);
-      padding: 14px;
+        6px 6px 0 var(--cabinet),
+        12px 12px 0 var(--yellow),
+        18px 18px 0 var(--pink);
+      padding: 8px;
     }
 
     .marquee {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding: 10px 12px;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 8px 10px;
       color: #fff;
       background: var(--ink);
-      border: 4px solid var(--cabinet);
+      border: 3px solid var(--cabinet);
       box-shadow: inset 0 -5px 0 rgba(255,255,255,.08);
-      letter-spacing: 1px;
     }
 
     .marquee h1 {
       margin: 0;
-      font-size: clamp(24px, 4vw, 42px);
+      font-size: clamp(22px, 7vw, 30px);
       line-height: .9;
       color: var(--yellow);
       text-shadow: 3px 3px 0 var(--pink);
@@ -73,19 +81,20 @@
     }
 
     .badge {
-      padding: 5px 9px;
-      border: 3px solid #fff;
+      padding: 4px 7px;
+      border: 2px solid #fff;
       color: #fff;
       background: var(--cabinet);
-      font-size: 15px;
+      font-size: 12px;
       white-space: nowrap;
     }
 
     .screen-wrap {
       position: relative;
-      border: 6px solid var(--ink);
+      border: 4px solid var(--ink);
       background: #050816;
       overflow: hidden;
+      flex: 0 0 auto;
     }
 
     canvas {
@@ -97,55 +106,102 @@
       background: #050816;
     }
 
-    .footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 12px;
+    .touch-controls {
+      display: grid;
+      grid-template-columns: 112px minmax(0, 1fr);
+      gap: 8px;
+      margin-top: 8px;
       color: #fff;
       background: var(--ink);
-      border: 4px solid var(--cyan);
-      padding: 8px 10px;
-      font-size: 14px;
+      border: 3px solid var(--cyan);
+      padding: 8px;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
 
-    .keys {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+    .move-pad {
+      display: grid;
+      grid-template-columns: repeat(3, 34px);
+      grid-template-rows: repeat(2, 42px);
+      gap: 6px;
     }
 
-    kbd {
+    .action-pad {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .touch-btn {
       display: inline-grid;
       place-items: center;
-      min-width: 30px;
-      height: 28px;
-      padding: 0 7px;
+      min-width: 0;
+      min-height: 40px;
+      padding: 0 6px;
       color: var(--ink);
-      background: var(--yellow);
+      background: var(--button);
       border: 3px solid #fff;
-      box-shadow: 0 4px 0 var(--pink);
+      border-radius: 0;
+      box-shadow: 0 5px 0 var(--cabinet);
       font-family: inherit;
       font-weight: 700;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .hint {
-      color: #d7e4ff;
-      white-space: nowrap;
+    .touch-btn:active,
+    .touch-btn.is-pressed {
+      transform: translateY(4px);
+      box-shadow: 0 1px 0 var(--cabinet);
+    }
+
+    .touch-btn.move {
+      background: var(--yellow);
+    }
+
+    .touch-btn.combo {
+      background: var(--pink);
+      color: #fff;
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .touch-btn.skill {
+      background: var(--cyan);
+    }
+
+    .touch-btn.ultimate {
+      background: var(--yellow);
+      box-shadow: 0 5px 0 var(--pink);
+    }
+
+    .touch-btn.system {
+      background: var(--green);
+      color: #fff;
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .jump { grid-column: 2; grid-row: 1; }
+    .left { grid-column: 1; grid-row: 2; }
+    .duck { grid-column: 2; grid-row: 2; }
+    .right { grid-column: 3; grid-row: 2; }
+
+    @media (max-height: 720px) {
+      .marquee { padding: 6px 8px; margin-bottom: 6px; }
+      .touch-controls { margin-top: 6px; padding: 6px; gap: 6px; }
+      .touch-btn { min-height: 36px; font-size: 13px; }
+      .move-pad { grid-template-columns: repeat(3, 32px); grid-template-rows: repeat(2, 38px); gap: 5px; }
     }
 
     @media (max-width: 760px) {
-      body { overflow: auto; }
-      .shell { align-items: start; padding: 10px; }
+      .shell { align-items: center; }
       .cabinet {
-        border-width: 4px;
-        box-shadow: 6px 6px 0 var(--cabinet), 12px 12px 0 var(--yellow);
-        padding: 8px;
+        width: calc(100vw - 20px);
+        box-shadow: 5px 5px 0 var(--cabinet), 10px 10px 0 var(--yellow);
       }
-      .marquee { align-items: flex-start; flex-direction: column; }
-      .footer { align-items: flex-start; flex-direction: column; }
-      .hint { white-space: normal; }
     }
   </style>
 </head>
@@ -161,11 +217,21 @@
         <canvas id="game" width="960" height="540" aria-label="社畜反击战游戏画面"></canvas>
       </div>
 
-      <div class="footer">
-        <div class="keys">
-          <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>Space</kbd><kbd>S</kbd><kbd>Q</kbd><kbd>E</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd>
+      <div class="touch-controls" aria-label="触屏操作区">
+        <div class="move-pad" aria-label="移动操作">
+          <button class="touch-btn move jump" type="button" data-press="space" aria-label="跳跃">跳</button>
+          <button class="touch-btn move left" type="button" data-press="left" aria-label="向左移动">←</button>
+          <button class="touch-btn move duck" type="button" data-press="s" aria-label="下蹲">蹲</button>
+          <button class="touch-btn move right" type="button" data-press="right" aria-label="向右移动">→</button>
         </div>
-        <div class="hint">Q/E 切招 · 1/2/3 直选 · J 出招 · K 远程 · L 大招</div>
+        <div class="action-pad" aria-label="出招操作">
+          <button class="touch-btn combo" type="button" data-press="1 j" aria-label="键盘连击">普攻</button>
+          <button class="touch-btn skill" type="button" data-press="2 j" aria-label="需求反弹">反弹</button>
+          <button class="touch-btn skill" type="button" data-press="3 j" aria-label="离职信突刺">突刺</button>
+          <button class="touch-btn skill" type="button" data-press="k" aria-label="扔订书机">远程</button>
+          <button class="touch-btn ultimate" type="button" data-press="l" aria-label="释放大招">大招</button>
+          <button class="touch-btn system" type="button" data-press="enter" aria-label="开始暂停或重开">开始</button>
+        </div>
       </div>
     </section>
   </main>
