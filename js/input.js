@@ -9,7 +9,7 @@
       window.addEventListener("keydown", (event) => {
         const key = this.normalize(event.key);
         if (!key) return;
-        if (["left", "right", "up", "space", "s", "j", "k", "l", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) {
+        if (["left", "right", "up", "space", "s", "j", "k", "l", "v", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) {
           event.preventDefault();
         }
         this.setKey(key, true);
@@ -24,7 +24,7 @@
     }
 
     normalize(key) {
-      if (["left", "right", "up", "space", "s", "j", "k", "l", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) return key;
+      if (["left", "right", "up", "space", "s", "j", "k", "l", "v", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) return key;
       if (key === "ArrowLeft" || key === "a" || key === "A") return "left";
       if (key === "ArrowRight" || key === "d" || key === "D") return "right";
       if (key === "ArrowUp" || key === "w" || key === "W") return "up";
@@ -33,6 +33,7 @@
       if (key === "j" || key === "J") return "j";
       if (key === "k" || key === "K") return "k";
       if (key === "l" || key === "L") return "l";
+      if (key === "v" || key === "V") return "v";
       if (key === "q" || key === "Q") return "q";
       if (key === "e" || key === "E") return "e";
       if (key === "1") return "1";

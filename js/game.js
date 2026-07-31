@@ -33,10 +33,15 @@
       this.toiletUsed = false;
       this.message = "";
       this.messageTimer = 0;
+      this.gateToastTimer = 0;
       this.stateTimer = 0;
       this.stats = this.makeStats();
+      this.task = this.makeTask();
+      this.floorProgressClaimed = false;
+      this.privilegeTimer = 0;
       const doc = window.document;
       this.ultimateButton = doc && doc.querySelector ? doc.querySelector(".touch-btn.ultimate") : null;
+      this.perkButton = doc && doc.querySelector ? doc.querySelector(".perk-btn") : null;
     }
 
     makeStats() {
@@ -48,8 +53,19 @@
         hits: 0,
         defeated: 0,
         bosses: 0,
+        workItems: 0,
         cleared: false,
         finish: 0
+      };
+    }
+
+    makeTask() {
+      return {
+        name: "把延期事项推进上线",
+        progress: 0,
+        target: 100,
+        quality: 100,
+        adUsesLeft: 3
       };
     }
 
@@ -68,6 +84,8 @@
 
     startGame() {
       this.stats = this.makeStats();
+      this.task = this.makeTask();
+      this.privilegeTimer = 0;
       this.floorIndex = 0;
       this.player = new window.Player();
       this.loadFloor(0, true);
@@ -75,7 +93,7 @@
 
     restartAfterEnding() {
       this.startGame();
-      this.toast("新一轮打工开始");
+      this.toast("新一轮事项开始");
     }
 
     loadFloor(index, first) {
@@ -88,6 +106,8 @@
       this.freezeTimer = 0;
       this.screenShake = 0;
       this.toiletUsed = false;
+      this.floorProgressClaimed = false;
+      this.gateToastTimer = 0;
       this.projectiles = [];
       this.particles = [];
       this.slashes = [];
@@ -106,7 +126,7 @@
         this.player.ammo = 8;
       }
       this.syncCameraToPlayer();
-      this.toast(`${this.level.floor} ${this.level.title}`);
+      this.toast(`${this.level.floor} ${this.level.taskName}`);
     }
 
     syncCameraToPlayer() {
@@ -121,9 +141,10 @@
 
     playerDown() {
       this.stats.deaths += 1;
+      this.reduceTaskQuality(7);
       this.state = "down";
       this.stateTimer = 2.2;
-      this.toast("倒下了，但房贷还没倒下");
+      this.toast("倒下了，事项还没交付");
     }
 
     floorClear() {
@@ -131,6 +152,11 @@
       this.enemies = [];
       this.freezeTimer = 0;
       this.screenShake = 14;
+      if (!this.floorProgressClaimed) {
+        const amount = this.level.clearProgress || 12;
+        this.advanceTask(amount, `${this.level.deliverable} 完成 +${amount}%`, 2);
+        this.floorProgressClaimed = true;
+      }
       if (this.floorIndex >= LEVELS.length - 1) {
         this.state = "ending";
         this.stats.cleared = true;
@@ -141,6 +167,60 @@
       this.state = "floorClear";
       this.stateTimer = 2.4;
       this.toast(`${this.level.bossName} 已下线`);
+    }
+
+    advanceTask(amount, text, qualityDelta) {
+      const before = this.task.progress;
+      this.task.progress = clamp(this.task.progress + amount, 0, this.task.target);
+      this.task.quality = clamp(this.task.quality + (qualityDelta || 0), 0, 100);
+      if (text && Math.round(this.task.progress) > Math.round(before)) this.toast(text);
+    }
+
+    collectWorkItem(amount, text) {
+      this.stats.workItems += 1;
+      this.advanceTask(amount, text, 1.5);
+      this.cheer("资料到手!", this.player.x + this.player.w / 2, this.player.y - 8, COLORS.cyan);
+      this.caption("关键资料入库", COLORS.cyan, 0.95);
+    }
+
+    reduceTaskQuality(amount) {
+      this.task.quality = clamp(this.task.quality - amount, 0, 100);
+    }
+
+    canEnterBoss() {
+      return Math.round(this.task.progress) >= (this.level.requiredProgress || 0);
+    }
+
+    requestAdPrivilege() {
+      if (this.task.adUsesLeft <= 0) {
+        this.toast("本局特权已用完");
+        this.caption("继续靠操作推进", COLORS.pink, 0.9);
+        return;
+      }
+      this.task.adUsesLeft -= 1;
+      // 后续接激励广告 SDK 时，在广告完成回调里调用 grantAdPrivilege。
+      this.grantAdPrivilege();
+    }
+
+    grantAdPrivilege() {
+      this.privilegeTimer = Math.max(this.privilegeTimer, 8);
+      if (this.player.health < 70 || this.player.mind < 58) {
+        this.player.health = clamp(this.player.health + 52, 0, this.player.maxHealth);
+        this.player.mind = clamp(this.player.mind + 42, 0, this.player.maxMind);
+        this.toast("特权：状态续航");
+        this.caption("状态续航已生效", COLORS.green, 1.0);
+      } else if (this.task.quality < 86) {
+        this.task.quality = clamp(this.task.quality + 12, 0, 100);
+        this.toast("特权：质量补救");
+        this.caption("交付质量回稳", COLORS.cyan, 1.0);
+      } else {
+        this.player.rage = clamp(this.player.rage + 45, 0, 100);
+        this.player.ammo = clamp(this.player.ammo + 4, 0, this.player.maxAmmo);
+        this.toast("特权：专注爆发");
+        this.caption("专注加成 8 秒", COLORS.yellow, 1.0);
+      }
+      this.player.invuln = Math.max(this.player.invuln, 0.75);
+      this.burst(this.player.x + this.player.w / 2, this.player.y + 24, COLORS.yellow, 14);
     }
 
     spawnPickup(type, x) {
@@ -217,13 +297,20 @@
     }
 
     syncTouchUi() {
-      if (!this.ultimateButton) return;
       const ratio = clamp(this.player.rage / 100, 0, 1);
       const ready = ratio >= 1 && this.state === "playing" && this.freezeTimer <= 0;
-      this.ultimateButton.style.setProperty("--ult-ratio", ratio.toFixed(2));
-      this.ultimateButton.dataset.charge = this.freezeTimer > 0 ? "释放中" : ready ? "READY" : `${Math.round(ratio * 100)}%`;
-      this.ultimateButton.classList.toggle("is-ready", ready);
-      this.ultimateButton.classList.toggle("is-active", this.freezeTimer > 0);
+      if (this.ultimateButton) {
+        this.ultimateButton.style.setProperty("--ult-ratio", ratio.toFixed(2));
+        this.ultimateButton.dataset.charge = this.freezeTimer > 0 ? "释放中" : ready ? "READY" : `${Math.round(ratio * 100)}%`;
+        this.ultimateButton.classList.toggle("is-ready", ready);
+        this.ultimateButton.classList.toggle("is-active", this.freezeTimer > 0);
+      }
+      if (this.perkButton) {
+        const uses = this.task ? this.task.adUsesLeft : 0;
+        this.perkButton.dataset.charge = uses > 0 ? `${uses}次` : "0次";
+        this.perkButton.classList.toggle("no-ads", uses <= 0);
+        this.perkButton.classList.toggle("is-active", this.privilegeTimer > 0);
+      }
     }
 
     addSlash(area, dir, opts) {
@@ -268,6 +355,8 @@
       this.messageTimer = Math.max(0, this.messageTimer - dt);
       this.screenShake = Math.max(0, this.screenShake - 45 * dt);
       this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+      this.privilegeTimer = Math.max(0, this.privilegeTimer - dt);
+      this.gateToastTimer = Math.max(0, this.gateToastTimer - dt);
       this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
       this.updateCallout(dt);
       this.syncTouchUi();
@@ -285,6 +374,10 @@
       if (this.state === "playing" && (this.input.consume("enter") || this.input.consume("p"))) {
         this.state = "paused";
         return;
+      }
+
+      if (this.state === "playing" && this.input.consume("v")) {
+        this.requestAdPrivilege();
       }
 
       if (this.state === "down") {
@@ -336,11 +429,22 @@
       this.enemies = this.enemies.filter((enemy) => !enemy.dead);
 
       if (this.phase === "run" && this.player.x > this.bossGate) {
-        this.phase = "boss";
-        this.worldWidth = 1840;
-        this.boss = new window.Boss(this.level, this.floorIndex);
-        this.player.x = Math.min(this.player.x, 1470);
-        this.toast(`${this.level.bossName} 登场`);
+        if (!this.canEnterBoss()) {
+          const need = this.level.requiredProgress || 0;
+          this.player.x = this.bossGate - 42;
+          this.player.vx = Math.min(this.player.vx, 0);
+          if (this.gateToastTimer <= 0) {
+            this.toast(`事项进度 ${Math.round(this.task.progress)}/${need}，先补资料`);
+            this.caption("进度达标才能验收", COLORS.yellow, 0.95);
+            this.gateToastTimer = 1.45;
+          }
+        } else {
+          this.phase = "boss";
+          this.worldWidth = 1840;
+          this.boss = new window.Boss(this.level, this.floorIndex);
+          this.player.x = Math.min(this.player.x, 1470);
+          this.toast(`${this.level.bossName} 开始验收`);
+        }
       }
 
       if (this.boss) this.boss.update(dt, this);
@@ -424,22 +528,27 @@
     }
 
     title() {
-      if (this.stats.damageTaken <= 0 && this.stats.deaths === 0 && this.stats.cleared) return "卷王终结者";
-      if (this.stats.moyu >= 10) return "老油条";
-      if (this.stats.moyu === 0 && this.stats.cleared) return "莽夫";
-      if (this.stats.deaths >= 5) return "职场复活甲";
-      return "精神自由人";
+      if (this.stats.cleared && this.task.quality >= 92 && this.stats.deaths === 0) return "高质量交付人";
+      if (this.stats.cleared && this.task.adUsesLeft === 0) return "资源整合大师";
+      if (this.stats.cleared && this.stats.workItems >= 5) return "资料闭环专家";
+      if (this.stats.deaths >= 5) return "韧性负责人";
+      if (this.stats.moyu >= 10) return "节奏管理大师";
+      return "事项推进官";
     }
 
     settlementScore() {
-      const raw = 1000
-        + this.stats.bosses * 120
-        + this.stats.defeated * 28
-        + this.stats.hits * 5
-        - this.stats.deaths * 90
-        - this.stats.moyu * 16
-        - Math.round(this.stats.damageTaken * 0.42)
-        - this.elapsedSeconds() * 2;
+      const raw = 220
+        + Math.round(this.task.progress * 2.0)
+        + Math.round(this.task.quality * 2.2)
+        + this.stats.bosses * 38
+        + this.stats.defeated * 12
+        + this.stats.workItems * 28
+        + Math.round(this.stats.hits * 1.4)
+        - this.stats.deaths * 80
+        - this.stats.moyu * 12
+        - (3 - this.task.adUsesLeft) * 35
+        - Math.round(this.stats.damageTaken * 0.35)
+        - Math.round(this.elapsedSeconds() * 1.6);
       return Math.round(clamp(raw, 0, 999));
     }
 
@@ -484,17 +593,17 @@
       this.drawCenteredText(ctx, "社畜反击战", 148, "46px Courier New", COLORS.yellow);
       ctx.fillStyle = COLORS.pink;
       ctx.fillRect(W / 2 - 128, 166, 256, 8);
-      this.drawCenteredText(ctx, "从工位杀到顶楼", 220, "18px Courier New", "#ffffff");
-      this.drawCenteredText(ctx, "把辞职信拍在 CEO 脸上", 246, "18px Courier New", "#ffffff");
+      this.drawCenteredText(ctx, "从工位推进到顶楼", 220, "18px Courier New", "#ffffff");
+      this.drawCenteredText(ctx, "把延期事项推进上线", 246, "18px Courier New", "#ffffff");
       this.drawCenteredText(ctx, "点开始进入公司大楼", 294, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, "触屏按钮直接出招", 322, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, "5 层 Boss Rush · 双血条", 362, "16px Courier New", "#fff7d8");
+      this.drawCenteredText(ctx, "收集资料 · 处理阻碍 · 通过验收", 322, "18px Courier New", COLORS.cyan);
+      this.drawCenteredText(ctx, "5 层交付 · 进度门槛 · 特权续航", 362, "16px Courier New", "#fff7d8");
       this.drawPixelWorker(ctx, W / 2 - 52, 410, 1, 3);
       ctx.fillStyle = COLORS.yellow;
       ctx.fillRect(W / 2 + 26, 442, 120, 14);
       ctx.fillStyle = COLORS.ink;
       ctx.font = "18px Courier New";
-      ctx.fillText("辞职信", W / 2 + 58, 456);
+      ctx.fillText("上线单", W / 2 + 58, 456);
     }
 
     drawWorld(ctx) {
@@ -557,7 +666,9 @@
       ctx.fillRect(this.bossGate + 10, GROUND - 112, 50, 112);
       ctx.fillStyle = COLORS.yellow;
       ctx.font = "16px Courier New";
-      ctx.fillText("BOSS", this.bossGate + 12, GROUND - 84);
+      ctx.fillText("验收", this.bossGate + 12, GROUND - 88);
+      ctx.font = "13px Courier New";
+      ctx.fillText(`${this.level.requiredProgress}%`, this.bossGate + 15, GROUND - 66);
       ctx.fillStyle = "#ffffff";
       ctx.fillText(this.level.floor, 48, 64);
     }
@@ -624,7 +735,7 @@
         ctx.fillRect(lead, area.y + 7, 46, 24);
         ctx.fillStyle = COLORS.ink;
         ctx.font = "12px Courier New";
-        ctx.fillText("辞职", lead + 9, area.y + 23);
+        ctx.fillText("上线", lead + 9, area.y + 23);
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(tipX - (slash.dir > 0 ? 2 : 18), area.y + 1, 18, area.h);
       } else {
@@ -703,7 +814,7 @@
       ctx.font = "20px Courier New";
       const width = Math.min(W - 28, Math.max(172, ctx.measureText(text).width + 38));
       const x = Math.round(W / 2 - width / 2);
-      const y = this.phase === "boss" ? 202 : 204;
+      const y = this.phase === "boss" ? 232 : 222;
       ctx.fillStyle = "rgba(5,8,22,.92)";
       ctx.fillRect(x + 5, y + 5, width, 46);
       ctx.fillStyle = item.color || COLORS.yellow;
@@ -717,27 +828,35 @@
 
     drawHud(ctx) {
       ctx.fillStyle = "rgba(5,8,22,.86)";
-      ctx.fillRect(8, 8, W - 16, 108);
+      ctx.fillRect(8, 8, W - 16, 130);
       ctx.strokeStyle = COLORS.yellow;
       ctx.lineWidth = 2;
-      ctx.strokeRect(8, 8, W - 16, 108);
+      ctx.strokeRect(8, 8, W - 16, 130);
       ctx.font = "14px Courier New";
       ctx.fillStyle = "#fff";
       ctx.fillText(`${this.level.floor} ${this.level.title}`, 18, 30);
-      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 18, 52);
-      this.drawBar(ctx, 58, 66, 116, 10, this.player.health / this.player.maxHealth, COLORS.red, "体力");
-      this.drawBar(ctx, 58, 84, 116, 10, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
-      this.drawBar(ctx, 58, 102, 116, 10, this.player.rage / 100, COLORS.yellow, "怒气");
-      this.drawMoveCard(ctx, 190, 48);
+      ctx.font = "12px Courier New";
+      ctx.fillStyle = "#fff7d8";
+      ctx.fillText(`事项 ${Math.round(this.task.progress)}%  门槛 ${this.level.requiredProgress}%`, 18, 49);
+      this.drawTaskGauge(ctx, 58, 58, 116, 9);
+      ctx.fillStyle = "#fff";
+      ctx.font = "14px Courier New";
+      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 18, 82);
+      this.drawBar(ctx, 58, 96, 116, 9, this.player.health / this.player.maxHealth, COLORS.red, "体力");
+      this.drawBar(ctx, 58, 112, 116, 9, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
+      this.drawBar(ctx, 58, 128, 116, 8, this.player.rage / 100, COLORS.yellow, "怒气");
+      this.drawMoveCard(ctx, 190, 54);
       ctx.fillStyle = "#fff";
       ctx.font = "13px Courier New";
       ctx.fillText(`倒${this.stats.deaths}`, 342, 40);
       ctx.fillText(`鱼${this.stats.moyu}`, 342, 62);
       ctx.fillText(`${this.elapsedSeconds()}s`, 342, 84);
-      if (this.player.broken > 0) this.statusTag(ctx, "破防", 12, 138, COLORS.pink);
-      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 70, 138, COLORS.yellow);
-      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 128, 138, COLORS.orange);
-      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 186, 138, COLORS.green);
+      ctx.fillText(`质${Math.round(this.task.quality)}`, 342, 106);
+      if (this.player.broken > 0) this.statusTag(ctx, "破防", 12, 164, COLORS.pink);
+      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 70, 164, COLORS.yellow);
+      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 128, 164, COLORS.orange);
+      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 186, 164, COLORS.green);
+      if (this.privilegeTimer > 0) this.statusTag(ctx, "特权", 244, 164, COLORS.yellow);
     }
 
     drawMoveCard(ctx, x, y) {
@@ -812,6 +931,24 @@
       ctx.fillText(label, x - 42, y + h - 2);
     }
 
+    drawTaskGauge(ctx, x, y, w, h) {
+      const ratio = this.task.progress / this.task.target;
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = COLORS.green;
+      ctx.fillRect(x, y, Math.floor(w * clamp(ratio, 0, 1)), h);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = "#fff";
+      ctx.font = "13px Courier New";
+      ctx.fillText("事项", x - 42, y + h);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "10px Courier New";
+      const text = `${Math.round(this.task.progress)}/${this.task.target}`;
+      ctx.fillText(text, x + w - 42, y + h - 1);
+    }
+
     statusTag(ctx, text, x, y, color) {
       ctx.fillStyle = color;
       ctx.fillRect(x, y - 15, 52, 18);
@@ -822,17 +959,18 @@
 
     drawBossHp(ctx) {
       if (!this.boss) return;
+      const y = 150;
       ctx.fillStyle = "rgba(17,24,39,.9)";
-      ctx.fillRect(28, 126, W - 56, 32);
+      ctx.fillRect(28, y, W - 56, 32);
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(28, 126, W - 56, 32);
+      ctx.strokeRect(28, y, W - 56, 32);
       ctx.fillStyle = COLORS.red;
-      ctx.fillRect(34, 133, Math.floor((W - 68) * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 18);
+      ctx.fillRect(34, y + 7, Math.floor((W - 68) * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 18);
       ctx.fillStyle = "#fff";
       ctx.font = "15px Courier New";
       const phase = this.floorIndex === 4 ? ` P${this.boss.phase}` : "";
-      ctx.fillText(`${this.boss.name}${phase}`, 38, 148);
+      ctx.fillText(`${this.boss.name}${phase}`, 38, y + 22);
     }
 
     drawToast(ctx) {
@@ -840,12 +978,12 @@
       ctx.font = "16px Courier New";
       const width = Math.min(W - 24, Math.max(180, ctx.measureText(text).width + 32));
       ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(W / 2 - width / 2, 164, width, 30);
+      ctx.fillRect(W / 2 - width / 2, 190, width, 30);
       ctx.strokeStyle = COLORS.ink;
       ctx.lineWidth = 2;
-      ctx.strokeRect(W / 2 - width / 2, 164, width, 30);
+      ctx.strokeRect(W / 2 - width / 2, 190, width, 30);
       ctx.fillStyle = COLORS.ink;
-      ctx.fillText(text, W / 2 - width / 2 + 16, 185);
+      ctx.fillText(text, W / 2 - width / 2 + 16, 211);
     }
 
     drawOverlay(ctx, title, sub) {
@@ -898,7 +1036,7 @@
       this.drawPixelPanel(ctx, 24, 48, W - 48, 574, COLORS.yellow);
       ctx.fillStyle = COLORS.yellow;
       ctx.font = "30px Courier New";
-      ctx.fillText("打工结算单", 54, 92);
+      ctx.fillText("事项结算单", 54, 92);
       ctx.fillStyle = grade === "S" ? COLORS.yellow : grade === "A" ? COLORS.cyan : COLORS.pink;
       ctx.fillRect(318, 64, 54, 42);
       ctx.fillStyle = COLORS.ink;
@@ -914,23 +1052,23 @@
       ctx.fillRect(194, letterY, 74, 28);
       ctx.fillStyle = COLORS.ink;
       ctx.font = "13px Courier New";
-      ctx.fillText("辞职信", 211, letterY + 19);
+      ctx.fillText("上线单", 211, letterY + 19);
 
       ctx.fillStyle = "#ffffff";
       ctx.font = "18px Courier New";
-      ctx.fillText("恭喜你，重获自由！", 162, 138);
+      ctx.fillText("恭喜你，事项已上线！", 162, 138);
       ctx.fillStyle = COLORS.cyan;
       ctx.font = "14px Courier New";
-      ctx.fillText("董事会建议：明天再说", 162, 162);
+      ctx.fillText("交付结果：老板已确认", 162, 162);
 
       this.drawMetricBox(ctx, "通关时间", `${this.elapsedSeconds()} 秒`, 50, 220, 154, COLORS.cyan);
-      this.drawMetricBox(ctx, "命中次数", `${this.stats.hits} 次`, 226, 220, 154, COLORS.yellow);
-      this.drawMetricBox(ctx, "击倒同事", `${this.stats.defeated} 人`, 50, 286, 154, COLORS.green);
-      this.drawMetricBox(ctx, "击败 Boss", `${this.stats.bosses}/5`, 226, 286, 154, COLORS.pink);
-      this.drawMetricBox(ctx, "被打倒", `${this.stats.deaths} 次`, 50, 352, 154, COLORS.orange);
-      this.drawMetricBox(ctx, "摸鱼次数", `${this.stats.moyu} 次`, 226, 352, 154, COLORS.green);
+      this.drawMetricBox(ctx, "事项进度", `${Math.round(this.task.progress)}%`, 226, 220, 154, COLORS.green);
+      this.drawMetricBox(ctx, "交付质量", `${Math.round(this.task.quality)}%`, 50, 286, 154, COLORS.cyan);
+      this.drawMetricBox(ctx, "资料收集", `${this.stats.workItems}/5`, 226, 286, 154, COLORS.yellow);
+      this.drawMetricBox(ctx, "处理阻碍", `${this.stats.defeated} 个`, 50, 352, 154, COLORS.green);
+      this.drawMetricBox(ctx, "验收通过", `${this.stats.bosses}/5`, 226, 352, 154, COLORS.pink);
       this.drawMetricBox(ctx, "承受伤害", Math.round(this.stats.damageTaken), 50, 418, 154, COLORS.red);
-      this.drawMetricBox(ctx, "绩效评分", score, 226, 418, 154, COLORS.yellow);
+      this.drawMetricBox(ctx, "特权使用", `${3 - this.task.adUsesLeft} 次`, 226, 418, 154, COLORS.orange);
 
       ctx.fillStyle = COLORS.pink;
       ctx.fillRect(50, 494, 330, 44);
@@ -938,7 +1076,7 @@
       ctx.fillRect(55, 499, 320, 34);
       ctx.fillStyle = "#ffffff";
       ctx.font = "20px Courier New";
-      ctx.fillText(`称号：${this.title()}`, 78, 522);
+      ctx.fillText(`评分 ${score} · ${this.title()}`, 78, 522);
 
       this.drawCenteredText(ctx, "点开始再来一轮", 586, "20px Courier New", COLORS.yellow);
     }

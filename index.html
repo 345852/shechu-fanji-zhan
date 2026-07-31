@@ -122,6 +122,40 @@
       touch-action: none;
     }
 
+    .perk-btn {
+      position: absolute;
+      right: 0;
+      top: -46px;
+      width: 118px;
+      min-height: 34px;
+      background: var(--yellow);
+      color: var(--ink);
+      border-color: #fff;
+      box-shadow: 0 5px 0 var(--pink);
+      font-size: 14px;
+    }
+
+    .perk-btn::after {
+      content: attr(data-charge);
+      position: absolute;
+      top: -10px;
+      right: -8px;
+      min-width: 30px;
+      padding: 2px 5px;
+      color: #fff;
+      background: var(--danger);
+      border: 2px solid #fff;
+      font-size: 11px;
+      line-height: 1;
+      text-shadow: none;
+    }
+
+    .perk-btn.no-ads {
+      background: #6b7280;
+      color: #fff;
+      box-shadow: 0 5px 0 #111827;
+    }
+
     .move-pad {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -262,6 +296,12 @@
     @media (max-height: 720px) {
       .touch-controls { padding: 8px; gap: 8px; }
       .touch-btn { min-height: 48px; font-size: 15px; }
+      .perk-btn {
+        top: -38px;
+        min-height: 30px;
+        width: 106px;
+        font-size: 13px;
+      }
       .move-pad,
       .action-pad { grid-template-rows: repeat(2, 48px); gap: 6px; }
     }
@@ -279,7 +319,7 @@
     <section class="cabinet" aria-label="社畜反击战游戏机">
       <div class="marquee">
         <h1>社畜反击战</h1>
-        <div class="badge">Boss Rush · 5F</div>
+        <div class="badge">交付闯关 · 5F</div>
       </div>
 
       <div class="screen-wrap">
@@ -287,6 +327,7 @@
       </div>
 
       <div class="touch-controls" aria-label="触屏操作区">
+        <button class="touch-btn perk-btn" type="button" data-press="v" data-charge="3次" aria-label="观看广告获取特权">特权</button>
         <div class="move-pad" aria-label="移动操作">
           <button class="touch-btn move jump" type="button" data-press="space" aria-label="跳跃">跳</button>
           <button class="touch-btn move left" type="button" data-press="left" aria-label="向左移动">←</button>
@@ -296,7 +337,7 @@
         <div class="action-pad" aria-label="出招操作">
           <button class="touch-btn combo" type="button" data-press="1 j" aria-label="键盘连击">普攻</button>
           <button class="touch-btn skill" type="button" data-press="2 j" aria-label="需求反弹">反弹</button>
-          <button class="touch-btn skill" type="button" data-press="3 j" aria-label="离职信突刺">突刺</button>
+          <button class="touch-btn skill" type="button" data-press="3 j" aria-label="上线单突刺">突刺</button>
           <button class="touch-btn skill" type="button" data-press="k" aria-label="扔订书机">远程</button>
           <button class="touch-btn ultimate" type="button" data-press="l" data-charge="0%" aria-label="释放大招"><span>大招</span><i class="charge-fill" aria-hidden="true"></i></button>
           <button class="touch-btn system" type="button" data-press="enter" aria-label="开始暂停或重开">开始</button>

@@ -22,6 +22,11 @@
       floor: "1F",
       title: "开放工位区",
       bossName: "组长·卷王",
+      taskName: "确认需求边界",
+      deliverable: "需求说明",
+      requiredProgress: 12,
+      clearProgress: 11,
+      pickupProgress: 8,
       theme: { sky: "#16213f", back: "#26305f", floor: "#46516f", neon: "#27d4ff" },
       bossColor: "#ff4d8d",
       bossHp: 170,
@@ -36,6 +41,7 @@
       ],
       pickups: [
         { type: "coffee", x: 680 },
+        { type: "brief", x: 820 },
         { type: "stapler", x: 1120 },
         { type: "toilet", x: 1310 }
       ]
@@ -44,6 +50,11 @@
       floor: "2F",
       title: "会议室",
       bossName: "主管·会霸",
+      taskName: "同步推进方案",
+      deliverable: "会议纪要",
+      requiredProgress: 30,
+      clearProgress: 12,
+      pickupProgress: 8,
       theme: { sky: "#111b2f", back: "#3f2b59", floor: "#4b435b", neon: "#ffda14" },
       bossColor: "#ffda14",
       bossHp: 200,
@@ -58,6 +69,7 @@
       ],
       pickups: [
         { type: "stapler", x: 500 },
+        { type: "brief", x: 720 },
         { type: "coffee", x: 840 },
         { type: "toilet", x: 1240 }
       ]
@@ -66,6 +78,11 @@
       floor: "3F",
       title: "经理办公室",
       bossName: "经理·甩锅侠",
+      taskName: "补齐数据证据",
+      deliverable: "数据包",
+      requiredProgress: 50,
+      clearProgress: 13,
+      pickupProgress: 9,
       theme: { sky: "#141c17", back: "#284438", floor: "#3d584a", neon: "#16a34a" },
       bossColor: "#16a34a",
       bossHp: 225,
@@ -81,6 +98,7 @@
       ],
       pickups: [
         { type: "coffee", x: 700 },
+        { type: "brief", x: 900 },
         { type: "stapler", x: 1080 },
         { type: "toilet", x: 1340 }
       ]
@@ -89,6 +107,11 @@
       floor: "4F",
       title: "总监楼层",
       bossName: "总监·画饼大师",
+      taskName: "评审定稿",
+      deliverable: "评审结论",
+      requiredProgress: 70,
+      clearProgress: 14,
+      pickupProgress: 9,
       theme: { sky: "#251534", back: "#54224a", floor: "#61375d", neon: "#ff8c1a" },
       bossColor: "#ff8c1a",
       bossHp: 260,
@@ -104,6 +127,7 @@
       ],
       pickups: [
         { type: "stapler", x: 660 },
+        { type: "brief", x: 900 },
         { type: "coffee", x: 980 },
         { type: "toilet", x: 1290 }
       ]
@@ -112,6 +136,11 @@
       floor: "5F",
       title: "顶楼 CEO 室",
       bossName: "CEO·资本之神",
+      taskName: "上线交付",
+      deliverable: "上线单",
+      requiredProgress: 92,
+      clearProgress: 18,
+      pickupProgress: 10,
       theme: { sky: "#18080d", back: "#50202a", floor: "#3f2f39", neon: "#dc2626" },
       bossColor: "#dc2626",
       bossHp: 330,
@@ -128,6 +157,7 @@
       ],
       pickups: [
         { type: "coffee", x: 610 },
+        { type: "brief", x: 780 },
         { type: "stapler", x: 1030 },
         { type: "toilet", x: 1320 }
       ]

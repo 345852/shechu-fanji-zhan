@@ -117,9 +117,9 @@
     constructor(type, x) {
       this.type = type;
       this.x = x;
-      this.y = type === "toilet" ? GROUND - 60 : GROUND - 28;
-      this.w = type === "toilet" ? 42 : 24;
-      this.h = type === "toilet" ? 60 : 24;
+      this.y = type === "toilet" ? GROUND - 60 : type === "brief" ? GROUND - 42 : GROUND - 28;
+      this.w = type === "toilet" ? 42 : type === "brief" ? 32 : 24;
+      this.h = type === "toilet" ? 60 : type === "brief" ? 34 : 24;
       this.used = false;
     }
 
@@ -134,6 +134,11 @@
       } else if (this.type === "stapler") {
         player.ammo = clamp(player.ammo + 5, 0, player.maxAmmo);
         game.toast("补充订书机弹药 +5");
+        this.used = true;
+      } else if (this.type === "brief") {
+        const amount = game.level.pickupProgress || 8;
+        if (game.collectWorkItem) game.collectWorkItem(amount, `${game.level.deliverable} +${amount}%`);
+        game.floatText(`事项 +${amount}%`, player.x + player.w / 2, player.y - 10, COLORS.yellow);
         this.used = true;
       } else if (this.type === "toilet" && !game.toiletUsed) {
         player.mind = player.maxMind;
@@ -159,6 +164,18 @@
         ctx.fillRect(x + 2, y + 8, 20, 10);
         ctx.fillStyle = "#4502ff";
         ctx.fillRect(x + 5, y + 4, 15, 8);
+      } else if (this.type === "brief") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(x + 5, y + 2, 22, 30);
+        ctx.fillStyle = COLORS.yellow;
+        ctx.fillRect(x + 8, y + 7, 16, 4);
+        ctx.fillStyle = COLORS.cyan;
+        ctx.fillRect(x + 8, y + 15, 12, 4);
+        ctx.fillStyle = COLORS.pink;
+        ctx.fillRect(x + 8, y + 23, 15, 4);
+        ctx.strokeStyle = COLORS.ink;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 5, y + 2, 22, 30);
       } else {
         ctx.fillStyle = this.used ? "#6b7280" : "#f9fafb";
         ctx.fillRect(x + 8, y + 8, 25, 34);
@@ -207,7 +224,7 @@
       this.moves = [
         { id: "combo", name: "键盘连击", hint: "稳定近战" },
         { id: "reflect", name: "需求反弹", hint: "反制远程" },
-        { id: "resign", name: "离职信突刺", hint: "破甲爆发" }
+        { id: "resign", name: "上线单突刺", hint: "破甲爆发" }
       ];
       this.moveIndex = 0;
       this.specialCd = 0;
@@ -254,7 +271,7 @@
       this.specialCd = Math.max(0, this.specialCd - dt);
       this.parryTimer = Math.max(0, this.parryTimer - dt);
       this.thrustTimer = Math.max(0, this.thrustTimer - dt);
-      this.attackScale = this.attackDebuff > 0 ? 0.55 : 1;
+      this.attackScale = (this.attackDebuff > 0 ? 0.55 : 1) * (game.privilegeTimer > 0 ? 1.18 : 1);
 
       this.crouching = !locked && input.down.s && this.onGround;
       const moving = input.down.left || input.down.right || input.down.up || input.down.space || input.down.j || input.down.k || input.down.l;
@@ -452,7 +469,7 @@
 
     resignationThrust(game) {
       if (this.specialCd > 0) {
-        game.toast(`离职信突刺冷却中 ${this.specialCd.toFixed(1)}s`);
+        game.toast(`上线单突刺冷却中 ${this.specialCd.toFixed(1)}s`);
         return;
       }
       this.attackTimer = 0.38;
@@ -467,19 +484,19 @@
         h: 38
       };
       const damage = 46 * this.attackScale;
-      game.floatText("离职信突刺", this.x + this.w / 2 + this.dir * 58, this.y + 6, COLORS.pink);
-      game.breathe("离职信突刺：当场递交", COLORS.pink, 0.22, 1.0);
+      game.floatText("上线单突刺", this.x + this.w / 2 + this.dir * 58, this.y + 6, COLORS.pink);
+      game.breathe("上线单突刺：验收通过", COLORS.pink, 0.22, 1.0);
       game.hitEnemies(area, damage, 170 * this.dir, {
         label: `-${Math.round(damage)}`,
         color: COLORS.pink,
-        callout: "离职信突刺：当场递交",
+        callout: "上线单突刺：验收通过",
         stop: 0.26,
         duration: 1.0
       });
       game.addSlash(area, this.dir, {
         kind: "resign",
         color: COLORS.pink,
-        label: "离职信突刺",
+        label: "上线单突刺",
         life: 0.34
       });
       game.burst(this.x + this.w / 2 + this.dir * 52, this.y + 26, COLORS.yellow, 9);
@@ -550,8 +567,13 @@
       if (this.crouching && source === "pancake") final *= 0.25;
       if (this.moyu) final *= 1.2;
       final *= source === "laser" ? 0.72 : 0.68;
-      const finalMind = (mindDamage || 0) * 0.65;
+      let finalMind = (mindDamage || 0) * 0.65;
+      if (game.privilegeTimer > 0) {
+        final *= 0.72;
+        finalMind *= 0.65;
+      }
       game.stats.damageTaken += final;
+      if (game.reduceTaskQuality) game.reduceTaskQuality(Math.max(0.6, (final + finalMind) * 0.05));
       this.health -= final;
       this.mind -= finalMind;
       this.rage = clamp(this.rage + final * 0.7 + finalMind * 0.36, 0, 100);
@@ -624,7 +646,7 @@
         ctx.fillRect(px, y + 25, 44, 20);
         ctx.fillStyle = COLORS.ink;
         ctx.font = "10px Courier New";
-        ctx.fillText("辞职", px + 8, y + 39);
+        ctx.fillText("上线", px + 8, y + 39);
       }
     }
   }
@@ -679,6 +701,7 @@
       if (this.hp <= 0) {
         this.dead = true;
         game.stats.defeated += 1;
+        if (game.advanceTask) game.advanceTask(2, "阻碍处理 +2%", 0.4);
         game.player.rage = clamp(game.player.rage + 12, 0, 100);
         if (Math.random() < 0.35) game.spawnPickup("coffee", this.x);
       }
