@@ -21,6 +21,8 @@
       this.particles = [];
       this.slashes = [];
       this.floatingTexts = [];
+      this.hitStopTimer = 0;
+      this.callout = null;
       this.boss = null;
       this.camera = { x: 0, y: 0 };
       this.time = 0;
@@ -83,6 +85,8 @@
       this.particles = [];
       this.slashes = [];
       this.floatingTexts = [];
+      this.hitStopTimer = 0;
+      this.callout = null;
       this.boss = null;
       this.enemies = this.level.enemies.map((enemy) => new window.Enemy(enemy.type, enemy.x));
       this.pickups = this.level.pickups.map((pickup) => new window.Pickup(pickup.type, pickup.x));
@@ -148,10 +152,31 @@
         x,
         y,
         color: color || "#fff",
-        life: 0.75,
-        maxLife: 0.75,
-        vy: -34
+        life: 1.18,
+        maxLife: 1.18,
+        vy: -18
       });
+    }
+
+    caption(text, color, duration) {
+      const life = duration || 0.95;
+      this.callout = {
+        text,
+        color: color || COLORS.yellow,
+        life,
+        maxLife: life
+      };
+    }
+
+    breathe(text, color, stop, duration) {
+      if (text) this.caption(text, color, duration);
+      this.hitStopTimer = Math.max(this.hitStopTimer, Math.min(stop || 0.16, 0.38));
+    }
+
+    updateCallout(dt) {
+      if (!this.callout) return;
+      this.callout.life -= dt;
+      if (this.callout.life <= 0) this.callout = null;
     }
 
     addSlash(area, dir, opts) {
@@ -179,6 +204,11 @@
         hit = true;
       }
       if (hit) this.screenShake = Math.max(this.screenShake, 4);
+      if (hit && feedback && feedback.callout) {
+        this.breathe(feedback.callout, feedback.color || COLORS.yellow, feedback.stop || 0.16, feedback.duration || 0.95);
+      } else if (hit) {
+        this.hitStopTimer = Math.max(this.hitStopTimer, 0.1);
+      }
     }
 
     damageBoss(damage) {
@@ -191,6 +221,8 @@
       this.messageTimer = Math.max(0, this.messageTimer - dt);
       this.screenShake = Math.max(0, this.screenShake - 45 * dt);
       this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
+      this.updateCallout(dt);
 
       if (this.state === "title") {
         if (this.input.consume("enter") || this.input.consume("j")) this.startGame();
@@ -236,6 +268,15 @@
     }
 
     updatePlaying(dt) {
+      if (this.hitStopTimer > 0) {
+        this.updateParticles(dt * 0.3);
+        this.updateFloatingTexts(dt * 0.45);
+        this.slashes.forEach((slash) => { slash.life -= dt * 0.35; });
+        this.slashes = this.slashes.filter((slash) => slash.life > 0);
+        this.syncCameraToPlayer();
+        return;
+      }
+
       this.player.update(dt, this);
       this.applyHazards(dt);
       this.updatePickups();
@@ -402,6 +443,7 @@
       ctx.restore();
       if (this.phase === "boss") this.drawBossHp(ctx);
       if (this.messageTimer > 0) this.drawToast(ctx);
+      if (this.callout) this.drawCallout(ctx);
     }
 
     drawCity(ctx, theme, camX) {
@@ -548,6 +590,27 @@
       ctx.fillStyle = item.color;
       ctx.fillText(item.text, x + 6, y - 1);
       ctx.globalAlpha = 1;
+    }
+
+    drawCallout(ctx) {
+      const item = this.callout;
+      const a = clamp(item.life / item.maxLife, 0, 1);
+      const text = String(item.text);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, 0.45 + a * 0.55);
+      ctx.font = "20px Courier New";
+      const width = Math.min(W - 28, Math.max(172, ctx.measureText(text).width + 38));
+      const x = Math.round(W / 2 - width / 2);
+      const y = this.phase === "boss" ? 202 : 204;
+      ctx.fillStyle = "rgba(5,8,22,.92)";
+      ctx.fillRect(x + 5, y + 5, width, 46);
+      ctx.fillStyle = item.color || COLORS.yellow;
+      ctx.fillRect(x, y, width, 46);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(x + 4, y + 4, width - 8, 38);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y + 29);
+      ctx.restore();
     }
 
     drawHud(ctx) {

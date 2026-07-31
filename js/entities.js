@@ -323,6 +323,7 @@
         this.mind = 20;
         this.broken = 2.0;
         game.toast("破防！短暂无法操作");
+        game.breathe("破防：先把心态捡回来", COLORS.pink, 0.3, 1.1);
       }
       if (this.health <= 0 && !this.dead) {
         this.dead = true;
@@ -367,15 +368,22 @@
       };
       const damage = (18 + this.combo * 5) * this.attackScale;
       const label = this.combo === 3 ? "键盘重击" : `键盘连击${this.combo}`;
-      game.floatText(label, this.x + this.w / 2 + this.dir * 44, this.y + 8, this.combo === 3 ? COLORS.pink : COLORS.yellow);
+      const color = this.combo === 3 ? COLORS.pink : COLORS.yellow;
+      const callouts = ["", "键盘连击：需求退回", "键盘连击：锅别给我", "键盘重击：奖金到账"];
+      const callout = callouts[this.combo] || label;
+      game.floatText(label, this.x + this.w / 2 + this.dir * 44, this.y + 8, color);
+      game.breathe(callout, color, this.combo === 3 ? 0.2 : 0.13, 0.9);
       game.hitEnemies(area, damage, this.combo === 3 ? 100 * this.dir : 35 * this.dir, {
         label: `-${Math.round(damage)}`,
-        color: this.combo === 3 ? COLORS.pink : COLORS.yellow
+        color,
+        callout,
+        stop: this.combo === 3 ? 0.24 : 0.16,
+        duration: 0.95
       });
       game.addSlash(area, this.dir, {
         kind: "combo",
         combo: this.combo,
-        color: this.combo === 3 ? COLORS.pink : COLORS.yellow,
+        color,
         label,
         life: this.combo === 3 ? 0.24 : 0.18
       });
@@ -396,7 +404,14 @@
         w: 50,
         h: 42
       };
-      game.hitEnemies(area, 8 * this.attackScale, 35 * this.dir);
+      game.breathe("需求反弹：锅回去了", COLORS.cyan, 0.18, 0.95);
+      game.hitEnemies(area, 8 * this.attackScale, 35 * this.dir, {
+        label: "反弹",
+        color: COLORS.cyan,
+        callout: "需求反弹：锅回去了",
+        stop: 0.2,
+        duration: 0.95
+      });
       game.addSlash(area, this.dir, {
         kind: "reflect",
         color: COLORS.cyan,
@@ -431,6 +446,7 @@
         game.screenShake = Math.max(game.screenShake, 6);
         game.toast(`需求反弹 ×${reflected}`);
         game.floatText(`反弹 ×${reflected}`, this.x + this.w / 2 + this.dir * 46, this.y - 8, COLORS.cyan);
+        game.breathe(`需求反弹 ×${reflected}`, COLORS.cyan, 0.22, 1.0);
       }
     }
 
@@ -452,9 +468,13 @@
       };
       const damage = 46 * this.attackScale;
       game.floatText("离职信突刺", this.x + this.w / 2 + this.dir * 58, this.y + 6, COLORS.pink);
+      game.breathe("离职信突刺：当场递交", COLORS.pink, 0.22, 1.0);
       game.hitEnemies(area, damage, 170 * this.dir, {
         label: `-${Math.round(damage)}`,
-        color: COLORS.pink
+        color: COLORS.pink,
+        callout: "离职信突刺：当场递交",
+        stop: 0.26,
+        duration: 1.0
       });
       game.addSlash(area, this.dir, {
         kind: "resign",
@@ -484,6 +504,7 @@
         color: COLORS.cyan
       }));
       game.floatText("订书机", this.x + this.w / 2 + this.dir * 36, this.y + 8, COLORS.cyan);
+      game.breathe("订书机警告：别再催了", COLORS.cyan, 0.1, 0.8);
     }
 
     ultimate(game) {
@@ -496,8 +517,22 @@
       game.screenShake = 18;
       game.toast("已读不回：全场冻结 3 秒");
       game.floatText("已读不回", this.x + this.w / 2, this.y - 12, COLORS.yellow);
+      game.breathe("已读不回：全场静音", COLORS.yellow, 0.28, 1.15);
       if (game.boss) game.damageBoss(70);
       game.enemies.forEach((enemy) => enemy.takeDamage(70, 0, game));
+    }
+
+    damageCaption(source) {
+      return {
+        laser: "KPI 激光命中",
+        minion: "同事背刺：血压上来了",
+        rush: "内卷冲撞：人麻了",
+        pancake: "大饼砸脸：先别信",
+        ppt: "PPT 光波入脑",
+        pot: "黑锅扣头：谁接谁亏",
+        wave: "996 冲击波",
+        stapler: "周报飞镖扎心"
+      }[source] || "职场暴击：先深呼吸";
     }
 
     takeDamage(amount, mindDamage, game, source) {
@@ -508,6 +543,7 @@
         game.screenShake = Math.max(game.screenShake, 5);
         game.burst(this.x + this.w / 2 + this.dir * 24, this.y + 24, COLORS.cyan, 8);
         game.floatText("挡下", this.x + this.w / 2, this.y - 8, COLORS.cyan);
+        game.breathe("挡下：这个需求不接", COLORS.cyan, 0.18, 0.9);
         return;
       }
       let final = amount;
@@ -524,6 +560,7 @@
       game.screenShake = Math.max(game.screenShake, 8);
       game.burst(this.x + this.w / 2, this.y + 20, COLORS.red, 8);
       game.floatText(`-${Math.round(final)}`, this.x + this.w / 2, this.y - 10, COLORS.red);
+      game.breathe(this.moyu ? "摸鱼被抓：这下社死" : this.damageCaption(source), COLORS.red, 0.28, 1.05);
     }
 
     drawVitals(ctx, x, y) {
@@ -738,6 +775,7 @@
           game.player.meetingTrap = 3;
           game.player.mind -= 8;
           game.toast("临时会议：你被困住了");
+          game.breathe("临时会议：人被钉住了", COLORS.yellow, 0.22, 1.0);
         }
       } else if (attack === "blackPot") {
         game.projectiles.push(new Projectile({
@@ -758,6 +796,7 @@
         game.player.attackDebuff = 6;
         game.player.mind -= 7;
         game.toast("期权空头支票：攻击力缩水");
+        game.breathe("空头支票：攻击力缩水", COLORS.orange, 0.2, 1.0);
       } else if (attack === "scythe") {
         game.projectiles.push(new Projectile({
           kind: "wave", owner: "enemy", x: this.x + this.dir * 55, y: GROUND - 92,
@@ -772,6 +811,7 @@
           }));
         }
         game.toast("996 冲击波");
+        game.breathe("996 冲击波", COLORS.yellow, 0.18, 1.0);
       } else if (attack === "layoffStorm") {
         for (let i = 0; i < 7; i += 1) {
           game.projectiles.push(new Projectile({
