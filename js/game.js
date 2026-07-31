@@ -21,6 +21,7 @@
       this.particles = [];
       this.slashes = [];
       this.floatingTexts = [];
+      this.hitCheers = [];
       this.hitStopTimer = 0;
       this.callout = null;
       this.boss = null;
@@ -34,6 +35,8 @@
       this.messageTimer = 0;
       this.stateTimer = 0;
       this.stats = this.makeStats();
+      const doc = window.document;
+      this.ultimateButton = doc && doc.querySelector ? doc.querySelector(".touch-btn.ultimate") : null;
     }
 
     makeStats() {
@@ -42,7 +45,11 @@
         deaths: 0,
         moyu: 0,
         damageTaken: 0,
-        cleared: false
+        hits: 0,
+        defeated: 0,
+        bosses: 0,
+        cleared: false,
+        finish: 0
       };
     }
 
@@ -85,6 +92,7 @@
       this.particles = [];
       this.slashes = [];
       this.floatingTexts = [];
+      this.hitCheers = [];
       this.hitStopTimer = 0;
       this.callout = null;
       this.boss = null;
@@ -126,6 +134,7 @@
       if (this.floorIndex >= LEVELS.length - 1) {
         this.state = "ending";
         this.stats.cleared = true;
+        this.stats.finish = performance.now();
         this.stateTimer = 0;
         return;
       }
@@ -158,6 +167,26 @@
       });
     }
 
+    cheer(text, x, y, color) {
+      const life = 0.82;
+      this.hitCheers.push({
+        text,
+        x,
+        y,
+        color: color || COLORS.yellow,
+        life,
+        maxLife: life,
+        vy: -26
+      });
+      this.hitCheers = this.hitCheers.slice(-12);
+      const sparks = [COLORS.yellow, COLORS.pink, COLORS.cyan, color || COLORS.yellow];
+      for (let i = 0; i < 10; i += 1) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.25;
+        const s = 70 + Math.random() * 150;
+        this.particles.push(new window.Particle(x, y, Math.cos(a) * s, Math.sin(a) * s, sparks[i % sparks.length], 0.32 + Math.random() * 0.28, 3));
+      }
+    }
+
     caption(text, color, duration) {
       const life = duration || 0.95;
       this.callout = {
@@ -177,6 +206,24 @@
       if (!this.callout) return;
       this.callout.life -= dt;
       if (this.callout.life <= 0) this.callout = null;
+    }
+
+    updateHitCheers(dt) {
+      this.hitCheers.forEach((item) => {
+        item.life -= dt;
+        item.y += item.vy * dt;
+      });
+      this.hitCheers = this.hitCheers.filter((item) => item.life > 0);
+    }
+
+    syncTouchUi() {
+      if (!this.ultimateButton) return;
+      const ratio = clamp(this.player.rage / 100, 0, 1);
+      const ready = ratio >= 1 && this.state === "playing" && this.freezeTimer <= 0;
+      this.ultimateButton.style.setProperty("--ult-ratio", ratio.toFixed(2));
+      this.ultimateButton.dataset.charge = this.freezeTimer > 0 ? "释放中" : ready ? "READY" : `${Math.round(ratio * 100)}%`;
+      this.ultimateButton.classList.toggle("is-ready", ready);
+      this.ultimateButton.classList.toggle("is-active", this.freezeTimer > 0);
     }
 
     addSlash(area, dir, opts) {
@@ -223,6 +270,7 @@
       this.freezeTimer = Math.max(0, this.freezeTimer - dt);
       this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
       this.updateCallout(dt);
+      this.syncTouchUi();
 
       if (this.state === "title") {
         if (this.input.consume("enter") || this.input.consume("j")) this.startGame();
@@ -249,6 +297,7 @@
         this.stateTimer -= dt;
         this.updateParticles(dt);
         this.updateFloatingTexts(dt);
+        this.updateHitCheers(dt);
         if (this.stateTimer <= 0) this.loadFloor(this.floorIndex + 1, false);
         return;
       }
@@ -261,6 +310,7 @@
         this.stateTimer += dt;
         this.updateParticles(dt);
         this.updateFloatingTexts(dt);
+        this.updateHitCheers(dt);
         return;
       }
 
@@ -271,6 +321,7 @@
       if (this.hitStopTimer > 0) {
         this.updateParticles(dt * 0.3);
         this.updateFloatingTexts(dt * 0.45);
+        this.updateHitCheers(dt * 0.45);
         this.slashes.forEach((slash) => { slash.life -= dt * 0.35; });
         this.slashes = this.slashes.filter((slash) => slash.life > 0);
         this.syncCameraToPlayer();
@@ -319,6 +370,7 @@
 
       this.updateParticles(dt);
       this.updateFloatingTexts(dt);
+      this.updateHitCheers(dt);
       this.slashes.forEach((slash) => { slash.life -= dt; });
       this.slashes = this.slashes.filter((slash) => slash.life > 0);
 
@@ -367,7 +419,8 @@
     }
 
     elapsedSeconds() {
-      return Math.max(0, Math.floor((performance.now() - this.stats.start) / 1000));
+      const end = this.stats.finish || performance.now();
+      return Math.max(0, Math.floor((end - this.stats.start) / 1000));
     }
 
     title() {
@@ -376,6 +429,25 @@
       if (this.stats.moyu === 0 && this.stats.cleared) return "莽夫";
       if (this.stats.deaths >= 5) return "职场复活甲";
       return "精神自由人";
+    }
+
+    settlementScore() {
+      const raw = 1000
+        + this.stats.bosses * 120
+        + this.stats.defeated * 28
+        + this.stats.hits * 5
+        - this.stats.deaths * 90
+        - this.stats.moyu * 16
+        - Math.round(this.stats.damageTaken * 0.42)
+        - this.elapsedSeconds() * 2;
+      return Math.round(clamp(raw, 0, 999));
+    }
+
+    settlementGrade(score) {
+      if (score >= 920) return "S";
+      if (score >= 780) return "A";
+      if (score >= 620) return "B";
+      return "C";
     }
 
     drawCenteredText(ctx, text, y, font, color) {
@@ -440,8 +512,10 @@
       this.player.draw(ctx, worldSpace);
       this.particles.forEach((particle) => particle.draw(ctx, worldSpace));
       this.floatingTexts.forEach((item) => this.drawFloatingText(ctx, item));
+      this.hitCheers.forEach((item) => this.drawHitCheer(ctx, item));
       ctx.restore();
       if (this.phase === "boss") this.drawBossHp(ctx);
+      if (this.freezeTimer > 0) this.drawUltimateActive(ctx);
       if (this.messageTimer > 0) this.drawToast(ctx);
       if (this.callout) this.drawCallout(ctx);
     }
@@ -592,6 +666,34 @@
       ctx.globalAlpha = 1;
     }
 
+    drawHitCheer(ctx, item) {
+      const a = clamp(item.life / item.maxLife, 0, 1);
+      const pop = 1 + (1 - a) * 0.18;
+      const text = String(item.text);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, a * 1.25);
+      ctx.font = "18px Courier New";
+      const width = Math.min(126, Math.max(82, ctx.measureText(text).width + 20));
+      const x = Math.round(item.x - width / 2);
+      const y = Math.round(item.y);
+      ctx.translate(x + width / 2, y - 18);
+      ctx.scale(pop, pop);
+      ctx.translate(-(x + width / 2), -(y - 18));
+      ctx.fillStyle = "rgba(5,8,22,.9)";
+      ctx.fillRect(x + 4, y - 38, width, 30);
+      ctx.fillStyle = item.color || COLORS.yellow;
+      ctx.fillRect(x, y - 42, width, 30);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(x + 4, y - 38, width - 8, 22);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y - 21);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(x - 7, y - 37, 5, 5);
+      ctx.fillStyle = COLORS.pink;
+      ctx.fillRect(x + width + 3, y - 22, 6, 6);
+      ctx.restore();
+    }
+
     drawCallout(ctx) {
       const item = this.callout;
       const a = clamp(item.life / item.maxLife, 0, 1);
@@ -641,11 +743,18 @@
     drawMoveCard(ctx, x, y) {
       const move = this.player.currentMove();
       const cd = this.player.specialCd;
+      const rageRatio = clamp(this.player.rage / 100, 0, 1);
+      const rageText = this.freezeTimer > 0 ? `冻结 ${this.freezeTimer.toFixed(1)}s` : rageRatio >= 1 ? "大招 READY" : `大招 ${Math.round(rageRatio * 100)}%`;
+      const ready = rageRatio >= 1 && this.freezeTimer <= 0;
       ctx.fillStyle = COLORS.purple;
-      ctx.fillRect(x, y, 136, 42);
+      ctx.fillRect(x, y, 136, 62);
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, 136, 42);
+      ctx.strokeRect(x, y, 136, 62);
+      if (ready && Math.floor(this.time * 6) % 2 === 0) {
+        ctx.strokeStyle = COLORS.yellow;
+        ctx.strokeRect(x - 3, y - 3, 142, 68);
+      }
       ctx.fillStyle = COLORS.yellow;
       ctx.font = "13px Courier New";
       ctx.fillText("当前招式", x + 8, y + 14);
@@ -655,6 +764,39 @@
       ctx.fillStyle = cd > 0 ? COLORS.pink : COLORS.cyan;
       ctx.font = "12px Courier New";
       ctx.fillText(cd > 0 ? `CD ${cd.toFixed(1)}s` : move.hint, x + 8, y + 40);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(x + 8, y + 46, 120, 11);
+      ctx.fillStyle = ready ? COLORS.yellow : COLORS.orange;
+      ctx.fillRect(x + 8, y + 46, Math.floor(120 * rageRatio), 11);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 8, y + 46, 120, 11);
+      ctx.fillStyle = ready ? COLORS.ink : "#ffffff";
+      ctx.font = "11px Courier New";
+      ctx.fillText(rageText, x + 12, y + 55);
+    }
+
+    drawUltimateActive(ctx) {
+      const a = clamp(this.freezeTimer / 3, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.24 + a * 0.2;
+      ctx.fillStyle = COLORS.yellow;
+      for (let y = 176; y < 344; y += 24) {
+        ctx.fillRect(0, y + Math.floor((this.time * 60) % 12), W, 4);
+      }
+      ctx.globalAlpha = 1;
+      const text = "已读不回生效中";
+      ctx.font = "20px Courier New";
+      const width = Math.max(190, ctx.measureText(text).width + 34);
+      const x = Math.round(W / 2 - width / 2);
+      const y = 164;
+      ctx.fillStyle = "rgba(5,8,22,.9)";
+      ctx.fillRect(x + 5, y + 5, width, 36);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(x, y, width, 36);
+      ctx.fillStyle = COLORS.ink;
+      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y + 24);
+      ctx.restore();
     }
 
     drawBar(ctx, x, y, w, h, ratio, color, label) {
@@ -713,26 +855,92 @@
       this.drawCenteredText(ctx, sub, H / 2 + 12, "18px Courier New", "#fff");
     }
 
+    drawPixelPanel(ctx, x, y, w, h, color) {
+      ctx.fillStyle = "rgba(0,0,0,.42)";
+      ctx.fillRect(x + 8, y + 8, w, h);
+      ctx.fillStyle = color || COLORS.yellow;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 9, y + 9, w - 18, h - 18);
+    }
+
+    drawMetricBox(ctx, label, value, x, y, w, color) {
+      ctx.fillStyle = "rgba(255,255,255,.08)";
+      ctx.fillRect(x, y, w, 48);
+      ctx.strokeStyle = color || COLORS.cyan;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, 48);
+      ctx.fillStyle = "#fff7d8";
+      ctx.font = "12px Courier New";
+      ctx.fillText(label, x + 8, y + 16);
+      ctx.fillStyle = color || "#ffffff";
+      ctx.font = "18px Courier New";
+      ctx.fillText(String(value), x + 8, y + 38);
+    }
+
     drawEnding(ctx) {
-      ctx.fillStyle = "rgba(5,8,22,.74)";
+      ctx.fillStyle = "rgba(5,8,22,.88)";
       ctx.fillRect(0, 0, W, H);
       const t = this.stateTimer;
-      const workerX = Math.min(W / 2 - 62, 36 + t * 70);
-      this.drawPixelWorker(ctx, workerX, 400, 1, 3);
-      ctx.fillStyle = "#7c3f1d";
-      ctx.fillRect(W / 2 + 22, 430, 150, 42);
-      ctx.fillStyle = "#fff7d8";
-      const letterY = t < 2.4 ? 292 + t * 58 : 436;
-      ctx.fillRect(W / 2 + 42, letterY, 96, 38);
+      const confetti = [COLORS.yellow, COLORS.pink, COLORS.cyan, COLORS.green, COLORS.orange];
+      for (let i = 0; i < 30; i += 1) {
+        const x = Math.round((i * 47 + t * (42 + i % 4 * 10)) % W);
+        const y = Math.round((i * 71 + t * (28 + i % 5 * 8)) % H);
+        ctx.fillStyle = confetti[i % confetti.length];
+        ctx.fillRect(x, y, 6 + i % 3, 6 + (i + 1) % 3);
+      }
+
+      const score = this.settlementScore();
+      const grade = this.settlementGrade(score);
+      this.drawPixelPanel(ctx, 24, 48, W - 48, 574, COLORS.yellow);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.font = "30px Courier New";
+      ctx.fillText("打工结算单", 54, 92);
+      ctx.fillStyle = grade === "S" ? COLORS.yellow : grade === "A" ? COLORS.cyan : COLORS.pink;
+      ctx.fillRect(318, 64, 54, 42);
       ctx.fillStyle = COLORS.ink;
-      ctx.font = "16px Courier New";
-      ctx.fillText("辞职信", W / 2 + 66, letterY + 25);
-      this.drawCenteredText(ctx, "恭喜你，重获自由！", 144, "30px Courier New", COLORS.yellow);
-      this.drawCenteredText(ctx, "明天去下一家公司报到", 188, "18px Courier New", "#fff");
-      this.drawCenteredText(ctx, `通关时间 ${this.elapsedSeconds()} 秒`, 254, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, `被打倒 ${this.stats.deaths} 次 · 摸鱼 ${this.stats.moyu} 次`, 284, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, `称号：${this.title()}`, 548, "24px Courier New", COLORS.pink);
-      this.drawCenteredText(ctx, "点开始再来一轮", 596, "20px Courier New", COLORS.yellow);
+      ctx.font = "32px Courier New";
+      ctx.fillText(grade, 337, 96);
+
+      const workerX = 58 + Math.min(38, t * 26);
+      this.drawPixelWorker(ctx, workerX, 128, 1, 2);
+      ctx.fillStyle = "#7c3f1d";
+      ctx.fillRect(274, 168, 84, 28);
+      ctx.fillStyle = "#fff7d8";
+      const letterY = t < 1.8 ? 118 + t * 30 : 172;
+      ctx.fillRect(194, letterY, 74, 28);
+      ctx.fillStyle = COLORS.ink;
+      ctx.font = "13px Courier New";
+      ctx.fillText("辞职信", 211, letterY + 19);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "18px Courier New";
+      ctx.fillText("恭喜你，重获自由！", 162, 138);
+      ctx.fillStyle = COLORS.cyan;
+      ctx.font = "14px Courier New";
+      ctx.fillText("董事会建议：明天再说", 162, 162);
+
+      this.drawMetricBox(ctx, "通关时间", `${this.elapsedSeconds()} 秒`, 50, 220, 154, COLORS.cyan);
+      this.drawMetricBox(ctx, "命中次数", `${this.stats.hits} 次`, 226, 220, 154, COLORS.yellow);
+      this.drawMetricBox(ctx, "击倒同事", `${this.stats.defeated} 人`, 50, 286, 154, COLORS.green);
+      this.drawMetricBox(ctx, "击败 Boss", `${this.stats.bosses}/5`, 226, 286, 154, COLORS.pink);
+      this.drawMetricBox(ctx, "被打倒", `${this.stats.deaths} 次`, 50, 352, 154, COLORS.orange);
+      this.drawMetricBox(ctx, "摸鱼次数", `${this.stats.moyu} 次`, 226, 352, 154, COLORS.green);
+      this.drawMetricBox(ctx, "承受伤害", Math.round(this.stats.damageTaken), 50, 418, 154, COLORS.red);
+      this.drawMetricBox(ctx, "绩效评分", score, 226, 418, 154, COLORS.yellow);
+
+      ctx.fillStyle = COLORS.pink;
+      ctx.fillRect(50, 494, 330, 44);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(55, 499, 320, 34);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "20px Courier New";
+      ctx.fillText(`称号：${this.title()}`, 78, 522);
+
+      this.drawCenteredText(ctx, "点开始再来一轮", 586, "20px Courier New", COLORS.yellow);
     }
 
     drawPixelWorker(ctx, x, y, dir, scale) {

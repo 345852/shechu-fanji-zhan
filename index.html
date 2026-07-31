@@ -179,8 +179,73 @@
     }
 
     .touch-btn.ultimate {
-      background: var(--yellow);
+      position: relative;
+      overflow: hidden;
+      background: #111827;
+      color: #fff;
+      border-color: var(--yellow);
       box-shadow: 0 5px 0 var(--pink);
+      text-shadow: 2px 2px 0 #000;
+    }
+
+    .touch-btn.ultimate::before {
+      content: "";
+      position: absolute;
+      left: 5px;
+      right: 5px;
+      bottom: 5px;
+      height: 6px;
+      background: rgba(255,255,255,.22);
+      border: 1px solid rgba(255,255,255,.7);
+    }
+
+    .touch-btn.ultimate::after {
+      content: attr(data-charge);
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      padding: 1px 4px;
+      color: #fff;
+      background: var(--pink);
+      border: 1px solid #fff;
+      font-size: 10px;
+      line-height: 1;
+      text-shadow: none;
+    }
+
+    .touch-btn.ultimate > span {
+      position: relative;
+      z-index: 1;
+      transform: translateY(3px);
+    }
+
+    .touch-btn.ultimate .charge-fill {
+      position: absolute;
+      left: 7px;
+      bottom: 7px;
+      z-index: 1;
+      width: calc((100% - 14px) * var(--ult-ratio, 0));
+      height: 4px;
+      background: var(--yellow);
+    }
+
+    .touch-btn.ultimate.is-ready {
+      color: var(--ink);
+      background: var(--yellow);
+      border-color: #fff;
+      text-shadow: none;
+      animation: ultimate-ready .7s steps(2, end) infinite;
+    }
+
+    .touch-btn.ultimate.is-ready::after,
+    .touch-btn.ultimate.is-active::after {
+      color: var(--ink);
+      background: var(--cyan);
+    }
+
+    @keyframes ultimate-ready {
+      0% { box-shadow: 0 5px 0 var(--pink), 0 0 0 0 var(--yellow); }
+      100% { box-shadow: 0 5px 0 var(--pink), 0 0 0 4px rgba(255,218,20,.38); }
     }
 
     .touch-btn.system {
@@ -233,7 +298,7 @@
           <button class="touch-btn skill" type="button" data-press="2 j" aria-label="需求反弹">反弹</button>
           <button class="touch-btn skill" type="button" data-press="3 j" aria-label="离职信突刺">突刺</button>
           <button class="touch-btn skill" type="button" data-press="k" aria-label="扔订书机">远程</button>
-          <button class="touch-btn ultimate" type="button" data-press="l" aria-label="释放大招">大招</button>
+          <button class="touch-btn ultimate" type="button" data-press="l" data-charge="0%" aria-label="释放大招"><span>大招</span><i class="charge-fill" aria-hidden="true"></i></button>
           <button class="touch-btn system" type="button" data-press="enter" aria-label="开始暂停或重开">开始</button>
         </div>
       </div>

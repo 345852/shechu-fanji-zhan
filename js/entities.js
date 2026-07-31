@@ -642,6 +642,7 @@
       this.attackCd = 0;
       this.dead = false;
       this.label = type === "hr" ? "HR" : type === "intern" ? "实习" : "舔狗";
+      this.title = type === "hr" ? "HR·薪资守门" : type === "intern" ? "实习生·背锅侠" : "同事·汇报怪";
       this.color = type === "hr" ? "#93c5fd" : type === "intern" ? "#a7f3d0" : "#f9a8d4";
     }
 
@@ -669,11 +670,15 @@
     }
 
     takeDamage(amount, knock, game) {
+      if (this.dead) return;
       this.hp -= amount;
       this.vx += knock || 0;
+      game.stats.hits += 1;
+      game.cheer(this.hp <= 0 ? "恭喜下线!" : "恭喜命中!", this.x + this.w / 2, this.y - 6, this.hp <= 0 ? COLORS.yellow : this.color);
       game.burst(this.x + this.w / 2, this.y + 18, this.color, 5);
       if (this.hp <= 0) {
         this.dead = true;
+        game.stats.defeated += 1;
         game.player.rage = clamp(game.player.rage + 12, 0, 100);
         if (Math.random() < 0.35) game.spawnPickup("coffee", this.x);
       }
@@ -692,13 +697,22 @@
       ctx.fillStyle = "#374151";
       ctx.fillRect(x + 7, y + 38, 7, 10);
       ctx.fillRect(x + 19, y + 38, 7, 10);
+      ctx.font = "12px Courier New";
+      const titleW = Math.max(78, ctx.measureText(this.title).width + 12);
+      const titleX = Math.round(x + this.w / 2 - titleW / 2);
+      const titleY = y - 36;
+      ctx.fillStyle = "rgba(5,8,22,.92)";
+      ctx.fillRect(titleX + 3, titleY + 3, titleW, 21);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(titleX, titleY, titleW, 21);
+      ctx.fillStyle = "#050816";
+      ctx.fillRect(titleX + 4, titleY + 4, titleW - 8, 13);
       ctx.fillStyle = "#fff";
-      ctx.font = "10px Courier New";
-      ctx.fillText(this.label, x - 2, y - 5);
+      ctx.fillText(this.title, titleX + 6, titleY + 15);
       ctx.fillStyle = COLORS.red;
-      ctx.fillRect(x, y - 14, this.w, 4);
+      ctx.fillRect(x, y - 10, this.w, 5);
       ctx.fillStyle = COLORS.green;
-      ctx.fillRect(x, y - 14, this.w * clamp(this.hp / this.maxHp, 0, 1), 4);
+      ctx.fillRect(x, y - 10, this.w * clamp(this.hp / this.maxHp, 0, 1), 5);
     }
   }
 
@@ -840,12 +854,16 @@
     }
 
     takeDamage(amount, game) {
+      if (this.dead) return;
       this.hp -= amount;
       this.flash = 0.12;
+      game.stats.hits += 1;
+      game.cheer(this.hp <= 0 ? "恭喜过关!" : "恭喜破防!", this.x + this.w / 2, this.y + 8, this.hp <= 0 ? COLORS.yellow : this.color);
       game.player.rage = clamp(game.player.rage + amount * 0.28, 0, 100);
       game.burst(this.x + this.w / 2, this.y + 34, this.color, 10);
       if (this.hp <= 0 && !this.dead) {
         this.dead = true;
+        game.stats.bosses += 1;
         game.floorClear();
       }
     }
