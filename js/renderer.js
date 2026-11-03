@@ -88,7 +88,8 @@
     if (heroine) rr(c,-13,-65+cy,27,22,11,grad(c,-10,-65,18,28,'#624738','#302f36'));
     rr(c,-3,-44+cy,7,7,2,'#d99371');ellipse(c,-10,-49+cy,3,4,'#dba17d');
     rr(c,heroine?-10:-11,-62+cy,heroine?22:24,23,heroine?10:9,grad(c,-8,-59,22,18,'#ffe0ad','#dc9876'),'#644e42');
-    ellipse(c,11,-48+cy,3,4,'#efbd94');ellipse(c,11,-49+cy,1.2,2,'#c9846b');
+    // Her three-quarter face has its visible ear behind the hair, never over the front cheek.
+    if (!heroine) { ellipse(c,11,-48+cy,3,4,'#efbd94');ellipse(c,11,-49+cy,1.2,2,'#c9846b'); }
     // Hair with offset fringe and a highlight — readable even at gameplay scale.
     if (heroine) {
       c.beginPath();c.moveTo(-12,-47+cy);
@@ -101,7 +102,6 @@
       c.beginPath();c.moveTo(-8,-60+cy);c.quadraticCurveTo(-1,-65+cy,6,-62+cy);
       c.strokeStyle='#af8163';c.lineWidth=1.2;c.stroke();
       line(c,[[8,-59+cy],[11,-56+cy]],'#f4c487',1.6);
-      ellipse(c,12,-44+cy,1.2,1.6,'#f2d7a5');
     } else {
     c.beginPath();c.moveTo(-12,-49+cy);c.bezierCurveTo(-16,-61+cy,-8,-68+cy,1,-65+cy);c.bezierCurveTo(8,-69+cy,17,-63+cy,14,-57+cy);c.lineTo(7,-54+cy);c.lineTo(5,-59+cy);c.lineTo(-3,-55+cy);c.lineTo(-9,-57+cy);c.lineTo(-9,-48+cy);c.closePath();c.fillStyle=grad(c,0,-66,10,16,boss?'#665344':'#35434b','#172530');c.fill();
     }
@@ -123,7 +123,7 @@
     line(c,[[5,-47+cy],[6,-45+cy],[4,-45+cy]],'#bd7a61',.8);
     if(attacking||boss)line(c,[[1,-42+cy],[6,-43+cy]],'#754b42',1.2);else {c.beginPath();c.arc(3,-45+cy,4,.4,1.8);c.strokeStyle='#ad6856';c.lineWidth=1;c.stroke();}
     ellipse(c,-4,-45+cy,2.5,1,heroine?'#d8877788':'#e68a7566');
-    if (heroine) ellipse(c,9,-45+cy,2,1,'#d8877766');
+    if (heroine) ellipse(c,7,-44.8+cy,1.7,.8,'#d8877755');
     // Forward arm drives weapon along a continuous arc.
     c.save();c.translate(8,-33+cy);
     const restAngle=Math.sin(stride+.8)*speed*.28-.28;
