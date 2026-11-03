@@ -1,355 +1,48 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>社畜反击战</title>
-  <style>
-    :root {
-      --ink: #111827;
-      --cabinet: #4502ff;
-      --panel: #fff7d8;
-      --yellow: #ffda14;
-      --pink: #ff4d8d;
-      --cyan: #27d4ff;
-      --green: #16a34a;
-      --danger: #dc2626;
-      --button: #f8fafc;
-    }
-
-    * { box-sizing: border-box; }
-
-    html,
-    body {
-      min-height: 100%;
-      margin: 0;
-      background: linear-gradient(180deg, #050816 0%, #14102c 54%, #090a12 100%);
-      color: var(--ink);
-      font-family: "Courier New", monospace;
-      overflow: hidden;
-      overscroll-behavior: none;
-      touch-action: none;
-    }
-
-    button { font: inherit; }
-
-    .shell {
-      min-height: 100dvh;
-      display: grid;
-      place-items: center;
-      padding: 0;
-    }
-
-    .cabinet {
-      position: relative;
-      width: min(100vw, 430px);
-      height: 100dvh;
-      overflow: hidden;
-      background: #050816;
-      border: 0;
-      box-shadow: none;
-      padding: 0;
-    }
-
-    .marquee {
-      position: absolute;
-      z-index: 3;
-      top: max(8px, env(safe-area-inset-top));
-      left: 8px;
-      right: 8px;
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 8px;
-      padding: 8px 10px;
-      color: #fff;
-      background: var(--ink);
-      border: 3px solid var(--cabinet);
-      box-shadow: inset 0 -5px 0 rgba(255,255,255,.08);
-    }
-
-    .marquee h1 {
-      margin: 0;
-      font-size: clamp(22px, 7vw, 30px);
-      line-height: .9;
-      color: var(--yellow);
-      text-shadow: 3px 3px 0 var(--pink);
-      white-space: nowrap;
-    }
-
-    .badge {
-      padding: 4px 7px;
-      border: 2px solid #fff;
-      color: #fff;
-      background: var(--cabinet);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .screen-wrap {
-      position: absolute;
-      inset: 0;
-      border: 0;
-      background: #050816;
-      overflow: hidden;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      background: #050816;
-    }
-
-    .touch-controls {
-      position: absolute;
-      z-index: 4;
-      left: 8px;
-      right: 8px;
-      bottom: max(8px, env(safe-area-inset-bottom));
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      color: #fff;
-      background: rgba(5, 8, 22, .86);
-      border: 3px solid var(--cyan);
-      padding: 10px;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-    }
-
-    .perk-btn {
-      position: absolute;
-      right: 0;
-      top: -46px;
-      width: 118px;
-      min-height: 34px;
-      background: var(--yellow);
-      color: var(--ink);
-      border-color: #fff;
-      box-shadow: 0 5px 0 var(--pink);
-      font-size: 14px;
-    }
-
-    .perk-btn::after {
-      content: attr(data-charge);
-      position: absolute;
-      top: -10px;
-      right: -8px;
-      min-width: 30px;
-      padding: 2px 5px;
-      color: #fff;
-      background: var(--danger);
-      border: 2px solid #fff;
-      font-size: 11px;
-      line-height: 1;
-      text-shadow: none;
-    }
-
-    .perk-btn.no-ads {
-      background: #6b7280;
-      color: #fff;
-      box-shadow: 0 5px 0 #111827;
-    }
-
-    .move-pad {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      grid-template-rows: repeat(2, 54px);
-      gap: 8px;
-      min-width: 0;
-    }
-
-    .action-pad {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      grid-template-rows: repeat(2, 54px);
-      gap: 8px;
-      min-width: 0;
-    }
-
-    .touch-btn {
-      display: inline-grid;
-      place-items: center;
-      min-width: 0;
-      min-height: 54px;
-      padding: 0 4px;
-      color: var(--ink);
-      background: var(--button);
-      border: 3px solid #fff;
-      border-radius: 0;
-      box-shadow: 0 5px 0 var(--cabinet);
-      font-family: inherit;
-      font-weight: 700;
-      font-size: 16px;
-      line-height: 1;
-      cursor: pointer;
-      touch-action: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .touch-btn:active,
-    .touch-btn.is-pressed {
-      transform: translateY(4px);
-      box-shadow: 0 1px 0 var(--cabinet);
-    }
-
-    .touch-btn.move {
-      background: var(--yellow);
-    }
-
-    .touch-btn.combo {
-      background: var(--pink);
-      color: #fff;
-      text-shadow: 2px 2px 0 var(--ink);
-    }
-
-    .touch-btn.skill {
-      background: var(--cyan);
-    }
-
-    .touch-btn.ultimate {
-      position: relative;
-      overflow: hidden;
-      background: #111827;
-      color: #fff;
-      border-color: var(--yellow);
-      box-shadow: 0 5px 0 var(--pink);
-      text-shadow: 2px 2px 0 #000;
-    }
-
-    .touch-btn.ultimate::before {
-      content: "";
-      position: absolute;
-      left: 5px;
-      right: 5px;
-      bottom: 5px;
-      height: 6px;
-      background: rgba(255,255,255,.22);
-      border: 1px solid rgba(255,255,255,.7);
-    }
-
-    .touch-btn.ultimate::after {
-      content: attr(data-charge);
-      position: absolute;
-      top: 5px;
-      right: 5px;
-      padding: 1px 4px;
-      color: #fff;
-      background: var(--pink);
-      border: 1px solid #fff;
-      font-size: 10px;
-      line-height: 1;
-      text-shadow: none;
-    }
-
-    .touch-btn.ultimate > span {
-      position: relative;
-      z-index: 1;
-      transform: translateY(3px);
-    }
-
-    .touch-btn.ultimate .charge-fill {
-      position: absolute;
-      left: 7px;
-      bottom: 7px;
-      z-index: 1;
-      width: calc((100% - 14px) * var(--ult-ratio, 0));
-      height: 4px;
-      background: var(--yellow);
-    }
-
-    .touch-btn.ultimate.is-ready {
-      color: var(--ink);
-      background: var(--yellow);
-      border-color: #fff;
-      text-shadow: none;
-      animation: ultimate-ready .7s steps(2, end) infinite;
-    }
-
-    .touch-btn.ultimate.is-ready::after,
-    .touch-btn.ultimate.is-active::after {
-      color: var(--ink);
-      background: var(--cyan);
-    }
-
-    @keyframes ultimate-ready {
-      0% { box-shadow: 0 5px 0 var(--pink), 0 0 0 0 var(--yellow); }
-      100% { box-shadow: 0 5px 0 var(--pink), 0 0 0 4px rgba(255,218,20,.38); }
-    }
-
-    .touch-btn.system {
-      background: var(--green);
-      color: #fff;
-      text-shadow: 2px 2px 0 var(--ink);
-    }
-
-    .jump { grid-column: 2; grid-row: 1; }
-    .left { grid-column: 1; grid-row: 2; }
-    .duck { grid-column: 2; grid-row: 2; }
-    .right { grid-column: 3; grid-row: 2; }
-
-    @media (max-height: 720px) {
-      .touch-controls { padding: 8px; gap: 8px; }
-      .touch-btn { min-height: 48px; font-size: 15px; }
-      .perk-btn {
-        top: -38px;
-        min-height: 30px;
-        width: 106px;
-        font-size: 13px;
-      }
-      .move-pad,
-      .action-pad { grid-template-rows: repeat(2, 48px); gap: 6px; }
-    }
-
-    @media (max-width: 760px) {
-      .shell { align-items: center; }
-      .cabinet {
-        width: 100vw;
-      }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101922">
+<meta name="description" content="从工位一路打到顶楼。一场属于打工人的办公室反击战。">
+<title>社畜反击战 · 今天，准点下班</title>
+<link rel="stylesheet" href="style.css?v=21a6280290c3">
 </head>
 <body>
-  <main class="shell">
-    <section class="cabinet" aria-label="社畜反击战游戏机">
-      <div class="marquee">
-        <h1>社畜反击战</h1>
-        <div class="badge">交付闯关 · 5F</div>
+<main class="shell">
+  <aside class="intro" aria-label="游戏介绍">
+    <div class="brand"><span class="brand-icon">↗</span> AFTER HOURS <span>独立街机 / 01</span></div>
+    <div class="intro-copy"><p class="eyebrow"><span></span> THE OFFICE IS YOUR ARENA</p><h1>今天，<br>轮到我<span>反击。</span></h1><p class="intro-desc">把需求打回去，把下班赢回来。<br>拿起键盘，从开放工位一路闯到顶楼。</p><div class="intro-rule"></div><p class="intro-note">5 层办公室 · 3 种战斗风格 · 1 个下班的理由</p></div>
+    <div class="keyboard-guide"><span class="guide-label">KEYBOARD / 键盘操作</span><p><kbd>A</kbd><kbd>D</kbd> 移动 <kbd>Space</kbd> 跳跃</p><p><kbd>J</kbd> 连击 <kbd>K</kbd> 远程 <kbd>L</kbd> 大招</p><p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换招式 <kbd>↵</kbd> 暂停</p></div>
+    <footer>打工人，也有自己的高光时刻。 <span>✦</span></footer>
+  </aside>
+  <section class="cabinet" data-state="title" aria-label="社畜反击战游戏机">
+    <div class="screen-wrap"><canvas id="game" width="430" height="760" aria-label="社畜反击战游戏画面">使用键盘或下方触屏按钮操作游戏。</canvas></div>
+    <div class="title-menu"><button class="start-adventure" type="button" data-press="enter"><span>开始反击</span><span aria-hidden="true">↗</span></button><p>按 ENTER 开始 <span>·</span> 支持键盘与触屏</p><div class="title-tags"><span>✦ 5 层闯关</span><span>⌁ 自由连招</span><span>↗ 高质量交付</span></div></div>
+    <div class="touch-controls" aria-label="触屏操作区">
+      <div class="control-top"><span class="control-status">自由移动 · 长按普攻连击</span><button class="touch-btn perk-btn" type="button" data-press="v" data-charge="3次" aria-label="领取特权补给">✦ 补给 <small>V</small></button></div>
+      <div class="move-pad" aria-label="移动操作">
+        <button class="touch-btn move jump" type="button" data-press="space" aria-label="跳跃"><b>↑</b><small>跳跃</small></button>
+        <button class="touch-btn move left" type="button" data-press="left" aria-label="向左移动"><b>←</b></button>
+        <button class="touch-btn move duck" type="button" data-press="s" aria-label="下蹲"><b>↓</b><small>下蹲</small></button>
+        <button class="touch-btn move right" type="button" data-press="right" aria-label="向右移动"><b>→</b></button>
       </div>
-
-      <div class="screen-wrap">
-        <canvas id="game" width="430" height="760" aria-label="社畜反击战游戏画面"></canvas>
+      <div class="action-pad" aria-label="出招操作">
+        <button class="touch-btn combo" type="button" data-press="1 j" aria-label="键盘连击"><b>普攻</b><small>J · 连击</small></button>
+        <button class="touch-btn skill" type="button" data-press="2 j" aria-label="需求反弹"><b>反弹</b><small>2 + J</small></button>
+        <button class="touch-btn skill" type="button" data-press="3 j" aria-label="上线单突刺"><b>突刺</b><small>3 + J</small></button>
+        <button class="touch-btn skill ranged" type="button" data-press="k" aria-label="扔订书机"><b>远程</b><small>K</small></button>
+        <button class="touch-btn ultimate" type="button" data-press="l" data-charge="0%" aria-label="释放大招"><b>大招</b><small>L</small><i class="charge-fill" aria-hidden="true"></i></button>
+        <button class="touch-btn system" type="button" data-press="enter" aria-label="开始暂停或重开"><b>暂停</b><small>ENTER</small></button>
       </div>
-
-      <div class="touch-controls" aria-label="触屏操作区">
-        <button class="touch-btn perk-btn" type="button" data-press="v" data-charge="3次" aria-label="观看广告获取特权">特权</button>
-        <div class="move-pad" aria-label="移动操作">
-          <button class="touch-btn move jump" type="button" data-press="space" aria-label="跳跃">跳</button>
-          <button class="touch-btn move left" type="button" data-press="left" aria-label="向左移动">←</button>
-          <button class="touch-btn move duck" type="button" data-press="s" aria-label="下蹲">蹲</button>
-          <button class="touch-btn move right" type="button" data-press="right" aria-label="向右移动">→</button>
-        </div>
-        <div class="action-pad" aria-label="出招操作">
-          <button class="touch-btn combo" type="button" data-press="1 j" aria-label="键盘连击">普攻</button>
-          <button class="touch-btn skill" type="button" data-press="2 j" aria-label="需求反弹">反弹</button>
-          <button class="touch-btn skill" type="button" data-press="3 j" aria-label="上线单突刺">突刺</button>
-          <button class="touch-btn skill" type="button" data-press="k" aria-label="扔订书机">远程</button>
-          <button class="touch-btn ultimate" type="button" data-press="l" data-charge="0%" aria-label="释放大招"><span>大招</span><i class="charge-fill" aria-hidden="true"></i></button>
-          <button class="touch-btn system" type="button" data-press="enter" aria-label="开始暂停或重开">开始</button>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <script src="js/data.js"></script>
-  <script src="js/input.js"></script>
-  <script src="js/entities.js"></script>
-  <script src="js/game.js"></script>
-  <script src="js/main.js"></script>
-</body>
-</html>
+    </div>
+  </section>
+  <aside class="floor-guide" aria-label="闯关路线"><p class="eyebrow">THE WAY OUT</p><h2>向上闯。<br>准点走。</h2><ol reversed><li><span>05</span><div>顶楼 CEO 室<small>资本之神</small></div></li><li><span>04</span><div>总监楼层<small>画饼大师</small></div></li><li><span>03</span><div>经理办公室<small>甩锅侠</small></div></li><li><span>02</span><div>会议室<small>会霸</small></div></li><li class="active"><span>01</span><div>开放工位区<small>从这里开始 ↗</small></div></li></ol><p class="route-note">收集资料，推进事项。<br>每一次反击，都离下班更近。</p></aside>
+</main>
+<script src="js/data.js?v=030b18d8a5bb"></script>
+<script src="js/input.js?v=7d2fb072da55"></script>
+<script src="js/renderer.js?v=bcf90db51e25"></script>
+<script src="js/entities.js?v=97ae68d114ae"></script>
+<script src="js/game.js?v=bfdbe77efe31"></script>
+<script src="js/main.js?v=e9c03334b233"></script>
+</body></html>

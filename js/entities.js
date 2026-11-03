@@ -13,6 +13,27 @@
     return { x: entity.x + entity.w / 2, y: entity.y + entity.h / 2 };
   }
 
+  // A hit interrupts pursuit and attacks; knockback replaces existing forward momentum.
+  function receiveImpact(entity, knock, game, weight = 1) {
+    const away = Math.sign((entity.x + entity.w / 2) - (game.player.x + game.player.w / 2)) || game.player.dir;
+    entity.hitStun = Math.max(entity.hitStun || 0, 0.30 + Math.min(0.16, Math.abs(knock || 0) * 0.001));
+    entity.vx = away * Math.max(95, Math.abs(knock || 0)) * weight;
+    entity.attackTimer = 0;
+    entity.attackCd = Math.max(entity.attackCd, 0.2);
+    entity.rushTimer = 0;
+    entity.actionTimer = 0;
+  }
+
+  function updateHitStun(entity, dt, game) {
+    if (!(entity.hitStun > 0)) return false;
+    const step = Math.min(dt, entity.hitStun);
+    const decay = Math.exp(-10 * step);
+    entity.x = clamp(entity.x + entity.vx * (1 - decay) / 10, 20, game.worldWidth - entity.w - 20);
+    entity.vx *= decay;
+    entity.hitStun = Math.max(0, entity.hitStun - dt);
+    return true;
+  }
+
   class Particle {
     constructor(x, y, vx, vy, color, life, size) {
       this.x = x; this.y = y; this.vx = vx; this.vy = vy;
@@ -27,11 +48,7 @@
     }
 
     draw(ctx, cam) {
-      if (this.life <= 0) return;
-      ctx.globalAlpha = clamp(this.life / this.maxLife, 0, 1);
-      ctx.fillStyle = this.color;
-      ctx.fillRect(Math.round(this.x - cam.x), Math.round(this.y - cam.y), this.size, this.size);
-      ctx.globalAlpha = 1;
+      window.GameArt.particle(ctx, this, cam);
     }
   }
 
@@ -52,6 +69,7 @@
     }
 
     update(dt, game) {
+      this.animTime = (this.animTime || 0) + dt;
       this.life -= dt;
       if (this.life <= 0) this.dead = true;
       if (this.homing && this.owner === "enemy") {
@@ -76,40 +94,7 @@
     }
 
     draw(ctx, cam) {
-      const x = Math.round(this.x - cam.x);
-      const y = Math.round(this.y - cam.y);
-      ctx.fillStyle = this.color;
-      if (this.kind === "ppt") {
-        ctx.fillRect(x, y, this.w, this.h);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(x + 4, y + 4, this.w - 8, 4);
-        return;
-      }
-      if (this.kind === "pot") {
-        ctx.fillStyle = "#111827";
-        ctx.fillRect(x + 2, y + 6, this.w - 4, this.h - 6);
-        ctx.fillStyle = "#444";
-        ctx.fillRect(x + 6, y, this.w - 12, 6);
-        return;
-      }
-      if (this.kind === "pancake") {
-        ctx.fillStyle = "#ffc857";
-        ctx.fillRect(x + 3, y + 3, this.w - 6, this.h - 6);
-        ctx.fillStyle = "#a55a1f";
-        ctx.fillRect(x + 8, y + 7, 5, 4);
-        ctx.fillRect(x + 17, y + 14, 4, 4);
-        return;
-      }
-      if (this.kind === "wave") {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(x, y, this.w, this.h);
-        ctx.fillStyle = "rgba(255,255,255,.8)";
-        ctx.fillRect(x, y + 4, this.w, 2);
-        return;
-      }
-      ctx.fillRect(x, y, this.w, this.h);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x + 3, y + 3, this.w - 6, this.h - 6);
+      window.GameArt.projectile(ctx, this, cam);
     }
   }
 
@@ -149,45 +134,7 @@
     }
 
     draw(ctx, cam) {
-      if (this.used && this.type !== "toilet") return;
-      const x = Math.round(this.x - cam.x);
-      const y = Math.round(this.y - cam.y);
-      if (this.type === "coffee") {
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(x + 4, y + 4, 17, 18);
-        ctx.fillStyle = "#7c2d12";
-        ctx.fillRect(x + 7, y + 9, 11, 9);
-        ctx.fillStyle = "#27d4ff";
-        ctx.fillRect(x + 19, y + 8, 6, 8);
-      } else if (this.type === "stapler") {
-        ctx.fillStyle = "#d1d5db";
-        ctx.fillRect(x + 2, y + 8, 20, 10);
-        ctx.fillStyle = "#4502ff";
-        ctx.fillRect(x + 5, y + 4, 15, 8);
-      } else if (this.type === "brief") {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(x + 5, y + 2, 22, 30);
-        ctx.fillStyle = COLORS.yellow;
-        ctx.fillRect(x + 8, y + 7, 16, 4);
-        ctx.fillStyle = COLORS.cyan;
-        ctx.fillRect(x + 8, y + 15, 12, 4);
-        ctx.fillStyle = COLORS.pink;
-        ctx.fillRect(x + 8, y + 23, 15, 4);
-        ctx.strokeStyle = COLORS.ink;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x + 5, y + 2, 22, 30);
-      } else {
-        ctx.fillStyle = this.used ? "#6b7280" : "#f9fafb";
-        ctx.fillRect(x + 8, y + 8, 25, 34);
-        ctx.fillStyle = "#93c5fd";
-        ctx.fillRect(x + 13, y + 13, 14, 9);
-        ctx.fillStyle = "#111827";
-        ctx.fillRect(x + 4, y + 42, 34, 8);
-        if (!this.used) {
-          ctx.fillStyle = "#16a34a";
-          ctx.fillRect(x, y, 42, 5);
-        }
-      }
+      window.GameArt.pickup(ctx, this, cam);
     }
   }
 
@@ -210,6 +157,12 @@
       this.maxAmmo = 12;
       this.attackTimer = 0;
       this.attackQueued = 0;
+      this.attackDuration = 0;
+      this.pendingHit = null;
+      this.comboWindow = 0;
+      this.animTime = 0;
+      this.walkCycle = 0;
+      this.crouchPose = 0;
       this.combo = 0;
       this.invuln = 0;
       this.broken = 0;
@@ -252,6 +205,13 @@
       this.parryTimer = 0;
       this.thrustTimer = 0;
       this.invuln = 1.4;
+      this.attackTimer = 0;
+      this.attackQueued = 0;
+      this.pendingHit = null;
+      this.comboWindow = 0;
+      this.combo = 0;
+      this.onGround = true;
+      this.crouchPose = 0;
     }
 
     get hitbox() {
@@ -262,6 +222,14 @@
     update(dt, game) {
       const input = game.input;
       const locked = this.broken > 0 || this.meetingTrap > 0 || game.freezeTimer > 0 || game.state !== "playing";
+      this.animTime += dt;
+      this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
+      this.walkCycle += Math.abs(this.vx) * dt * 0.065;
+      this.crouchPose += ((this.crouching ? 1 : 0) - this.crouchPose) * (1 - Math.exp(-18 * dt));
+      this.attackQueued = Math.max(0, this.attackQueued - dt);
+      this.comboWindow = Math.max(0, this.comboWindow - dt);
+      if (this.comboWindow === 0 && this.attackTimer === 0) this.combo = 0;
+      if (locked) { this.pendingHit = null; this.attackQueued = 0; }
       this.invuln = Math.max(0, this.invuln - dt);
       this.attackTimer = Math.max(0, this.attackTimer - dt);
       this.speedBoost = Math.max(0, this.speedBoost - dt);
@@ -297,7 +265,7 @@
         if (input.down.right) ax += 1;
         const maxSpeed = (this.speedBoost > 0 ? 236 : 190) * (this.crouching ? 0.45 : 1);
         if (ax !== 0) {
-          this.dir = ax;
+          if (this.attackTimer <= 0) this.dir = ax;
           this.vx += ax * 1100 * dt;
         } else {
           this.vx *= Math.pow(0.001, dt);
@@ -306,7 +274,9 @@
           this.vx = input.dashDir * 360;
           this.dir = input.dashDir;
         }
-        this.vx = clamp(this.vx, -maxSpeed, maxSpeed);
+        this.vx = this.thrustTimer > 0
+          ? this.dir * (220 + 300 * this.thrustTimer / 0.22)
+          : clamp(this.vx, -maxSpeed, maxSpeed);
 
         if ((input.consume("up") || input.consume("space")) && this.onGround && !this.crouching) {
           this.vy = -560;
@@ -320,6 +290,10 @@
         if (input.consume("3")) this.selectMove(2, game);
         if (this.parryTimer > 0) this.reflectProjectiles(game);
         if (input.consume("j")) this.useCurrentMove(game);
+        if (this.currentMove().id === 'combo' && this.attackTimer <= 0 && (this.attackQueued > 0 || input.down.j)) {
+          this.attackQueued = 0;
+          this.swing(game);
+        }
         if (input.consume("k")) this.throwStapler(game);
         if (input.consume("l")) this.ultimate(game);
       } else {
@@ -335,6 +309,17 @@
         this.onGround = true;
       }
       this.x = clamp(this.x, 20, game.worldWidth - 60);
+      if (this.pendingHit && !locked) {
+        this.pendingHit.delay -= dt;
+        if (this.pendingHit.delay <= 0) {
+          const hit = this.pendingHit;
+          this.pendingHit = null;
+          const area = { x: this.dir > 0 ? this.x + this.w - 4 : this.x - hit.range + 4,
+            y: this.y + 12, w: hit.range, h: 38 };
+          game.hitEnemies(area, hit.damage * this.attackScale, hit.knock * this.dir, hit.feedback);
+          game.addSlash(area, this.dir, hit.effect);
+        }
+      }
 
       if (this.mind <= 0 && this.broken <= 0) {
         this.mind = 20;
@@ -370,40 +355,26 @@
     }
 
     swing(game) {
-      if (this.attackTimer > 0.05) {
-        this.attackQueued = 0.18;
+      if (this.attackTimer > 0) {
+        this.attackQueued = 0.20;
         return;
       }
       this.combo = (this.combo % 3) + 1;
-      this.attackTimer = 0.28;
-      const range = 48 + this.combo * 8;
-      const area = {
-        x: this.dir > 0 ? this.x + this.w - 4 : this.x - range + 4,
-        y: this.y + 14,
-        w: range,
-        h: 34
-      };
-      const damage = (18 + this.combo * 5) * this.attackScale;
-      const label = this.combo === 3 ? "键盘重击" : `键盘连击${this.combo}`;
+      this.comboWindow = 0.85;
+      this.attackKind = "combo";
+      this.attackDuration = this.combo === 3 ? 0.40 : 0.30;
+      this.attackTimer = this.attackDuration;
+      const damage = 18 + this.combo * 5;
       const color = this.combo === 3 ? COLORS.pink : COLORS.yellow;
-      const callouts = ["", "键盘连击：需求退回", "键盘连击：锅别给我", "键盘重击：奖金到账"];
-      const callout = callouts[this.combo] || label;
-      game.floatText(label, this.x + this.w / 2 + this.dir * 44, this.y + 8, color);
-      game.breathe(callout, color, this.combo === 3 ? 0.2 : 0.13, 0.9);
-      game.hitEnemies(area, damage, this.combo === 3 ? 100 * this.dir : 35 * this.dir, {
-        label: `-${Math.round(damage)}`,
-        color,
-        callout,
-        stop: this.combo === 3 ? 0.24 : 0.16,
-        duration: 0.95
-      });
-      game.addSlash(area, this.dir, {
-        kind: "combo",
-        combo: this.combo,
-        color,
-        label,
-        life: this.combo === 3 ? 0.24 : 0.18
-      });
+      this.pendingHit = {
+        delay: this.combo === 3 ? 0.12 : 0.075,
+        range: 48 + this.combo * 8,
+        damage,
+        knock: this.combo === 3 ? 100 : 35,
+        feedback: { label: `-${Math.round(damage * this.attackScale)}`, color,
+          callout: this.combo === 3 ? '键盘重击 · 需求退回' : '', duration: 0.6 },
+        effect: { kind: 'combo', combo: this.combo, color, life: this.combo === 3 ? 0.28 : 0.22 }
+      };
     }
 
     demandReflect(game) {
@@ -411,6 +382,9 @@
         game.toast(`需求反弹冷却中 ${this.specialCd.toFixed(1)}s`);
         return;
       }
+      if (this.attackTimer > 0) return;
+      this.attackKind = "reflect";
+      this.attackDuration = 0.32;
       this.attackTimer = 0.32;
       this.parryTimer = 0.42;
       this.specialCd = 1.05;
@@ -472,11 +446,13 @@
         game.toast(`上线单突刺冷却中 ${this.specialCd.toFixed(1)}s`);
         return;
       }
+      if (this.attackTimer > 0) return;
+      this.attackKind = "thrust";
+      this.attackDuration = 0.38;
       this.attackTimer = 0.38;
       this.thrustTimer = 0.22;
       this.specialCd = 0.85;
       this.vx = this.dir * 520;
-      this.x += this.dir * 26;
       const area = {
         x: this.dir > 0 ? this.x + this.w - 2 : this.x - 92,
         y: this.y + 10,
@@ -503,10 +479,14 @@
     }
 
     throwStapler(game) {
+      if (this.attackTimer > 0.08) return;
       if (this.ammo <= 0) {
         game.toast("订书机没钉了");
         return;
       }
+      this.attackKind = "ranged";
+      this.attackDuration = 0.26;
+      this.attackTimer = 0.26;
       this.ammo -= 1;
       game.projectiles.push(new Projectile({
         owner: "player",
@@ -575,79 +555,21 @@
       game.stats.damageTaken += final;
       if (game.reduceTaskQuality) game.reduceTaskQuality(Math.max(0.6, (final + finalMind) * 0.05));
       this.health -= final;
+      this.hitReaction = .18;
       this.mind -= finalMind;
       this.rage = clamp(this.rage + final * 0.7 + finalMind * 0.36, 0, 100);
       this.invuln = 1.15;
-      this.vx = -this.dir * 120;
+      // Body contact must not let an opponent drive the player out of her occupied space.
+      if (source !== 'minion' && source !== 'rush') this.vx = -this.dir * 120;
       game.screenShake = Math.max(game.screenShake, 8);
       game.burst(this.x + this.w / 2, this.y + 20, COLORS.red, 8);
       game.floatText(`-${Math.round(final)}`, this.x + this.w / 2, this.y - 10, COLORS.red);
       game.breathe(this.moyu ? "摸鱼被抓：这下社死" : this.damageCaption(source), COLORS.red, 0.28, 1.05);
     }
 
-    drawVitals(ctx, x, y) {
-      const barW = 70;
-      const barH = 7;
-      const left = Math.round(x + this.w / 2 - barW / 2);
-      const top = Math.round(y - 30);
-      const hp = Math.ceil(clamp(this.health, 0, this.maxHealth));
-      const ratio = clamp(this.health / this.maxHealth, 0, 1);
-      const text = `${hp}/${this.maxHealth}`;
-
-      ctx.fillStyle = "rgba(5,8,22,.88)";
-      ctx.fillRect(left - 5, top - 12, barW + 10, 24);
-      ctx.strokeStyle = COLORS.yellow;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(left - 5, top - 12, barW + 10, 24);
-      ctx.fillStyle = "#3f1117";
-      ctx.fillRect(left, top, barW, barH);
-      ctx.fillStyle = ratio < 0.3 ? COLORS.red : "#ef4444";
-      ctx.fillRect(left, top, Math.floor(barW * ratio), barH);
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(left, top, barW, barH);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "11px Courier New";
-      ctx.fillText(text, left + Math.max(2, Math.floor((barW - text.length * 6) / 2)), top - 3);
-    }
-
     draw(ctx, cam) {
-      const x = Math.round(this.x - cam.x);
-      const y = Math.round(this.y - cam.y);
-      this.drawVitals(ctx, x, y);
-      if (this.invuln > 0 && Math.floor(this.invuln * 20) % 2 === 0) return;
-      const crouch = this.crouching ? 14 : 0;
-      ctx.fillStyle = "#f6c28b";
-      ctx.fillRect(x + 10, y + 4 + crouch, 16, 16);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x + (this.dir > 0 ? 21 : 9), y + 10 + crouch, 4, 4);
-      ctx.fillStyle = this.moyu ? COLORS.green : COLORS.cyan;
-      ctx.fillRect(x + 6, y + 21 + crouch, 24, 24 - crouch);
-      ctx.fillStyle = "#263238";
-      ctx.fillRect(x + 7, y + 45, 8, 13);
-      ctx.fillRect(x + 20, y + 45, 8, 13);
-      ctx.fillStyle = COLORS.yellow;
-      const kbX = this.dir > 0 ? x + 27 : x - 22;
-      ctx.fillRect(kbX, y + 29 + crouch, 25, 9);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(kbX + 4, y + 32 + crouch, 3, 3);
-      ctx.fillRect(kbX + 11, y + 32 + crouch, 3, 3);
-      ctx.fillRect(kbX + 18, y + 32 + crouch, 3, 3);
-      if (this.parryTimer > 0) {
-        const sx = this.dir > 0 ? x + 36 : x - 18;
-        ctx.fillStyle = "rgba(39, 212, 255, .85)";
-        ctx.fillRect(sx, y + 7, 10, 48);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(sx + 3, y + 12, 4, 34);
-      }
-      if (this.thrustTimer > 0) {
-        const px = this.dir > 0 ? x + 40 : x - 44;
-        ctx.fillStyle = "#fff7d8";
-        ctx.fillRect(px, y + 25, 44, 20);
-        ctx.fillStyle = COLORS.ink;
-        ctx.font = "10px Courier New";
-        ctx.fillText("上线", px + 8, y + 39);
-      }
+      window.GameArt.character(ctx, this, cam);
+      window.GameArt.vitals(ctx, this, this.x - cam.x, this.y - cam.y);
     }
   }
 
@@ -663,6 +585,9 @@
       this.maxHp = this.hp;
       this.attackCd = 0;
       this.dead = false;
+      this.hitStun = 0;
+      this.animTime = 0;
+      this.walkCycle = 0;
       this.label = type === "hr" ? "HR" : type === "intern" ? "实习" : "舔狗";
       this.title = type === "hr" ? "HR·薪资守门" : type === "intern" ? "实习生·背锅侠" : "同事·汇报怪";
       this.color = type === "hr" ? "#93c5fd" : type === "intern" ? "#a7f3d0" : "#f9a8d4";
@@ -673,9 +598,15 @@
     }
 
     update(dt, game) {
+      this.animTime += dt;
+      this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
       if (game.freezeTimer > 0) return;
+      if (updateHitStun(this, dt, game)) return;
+      this.walkCycle += Math.abs(this.vx || 45) * dt * 0.07;
       this.attackCd = Math.max(0, this.attackCd - dt);
-      const dx = game.player.x - this.x;
+      this.attackTimer = Math.max(0, (this.attackTimer || 0) - dt);
+      const dx = (game.player.x + game.player.w / 2) - (this.x + this.w / 2);
+      this.dir = Math.sign(dx) || 1;
       const dist = Math.abs(dx);
       if (dist < 380) {
         const dir = Math.sign(dx) || 1;
@@ -685,16 +616,20 @@
         this.vx *= Math.pow(0.02, dt);
       }
       this.x += this.vx * dt;
-      if (dist < 42 && this.attackCd <= 0) {
+      const verticalContact = this.y < game.player.y + game.player.h && this.y + this.h > game.player.y;
+      if (dist < (this.w + game.player.w) / 2 + 8 && verticalContact && this.attackCd <= 0) {
         game.player.takeDamage(this.type === "hr" ? 7 : 5, this.type === "hr" ? 9 : 5, game, "minion");
         this.attackCd = 1.35;
+        this.attackDuration = .35;
+        this.attackTimer = .35;
       }
     }
 
     takeDamage(amount, knock, game) {
       if (this.dead) return;
       this.hp -= amount;
-      this.vx += knock || 0;
+      this.hitReaction = .18;
+      receiveImpact(this, knock, game);
       game.stats.hits += 1;
       game.cheer(this.hp <= 0 ? "恭喜下线!" : "恭喜命中!", this.x + this.w / 2, this.y - 6, this.hp <= 0 ? COLORS.yellow : this.color);
       game.burst(this.x + this.w / 2, this.y + 18, this.color, 5);
@@ -708,34 +643,7 @@
     }
 
     draw(ctx, cam) {
-      const x = Math.round(this.x - cam.x);
-      const y = Math.round(this.y - cam.y);
-      ctx.fillStyle = this.color;
-      ctx.fillRect(x + 6, y + 10, 20, 28);
-      ctx.fillStyle = "#f6c28b";
-      ctx.fillRect(x + 8, y, 16, 15);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x + 10, y + 6, 4, 4);
-      ctx.fillRect(x + 20, y + 6, 4, 4);
-      ctx.fillStyle = "#374151";
-      ctx.fillRect(x + 7, y + 38, 7, 10);
-      ctx.fillRect(x + 19, y + 38, 7, 10);
-      ctx.font = "12px Courier New";
-      const titleW = Math.max(78, ctx.measureText(this.title).width + 12);
-      const titleX = Math.round(x + this.w / 2 - titleW / 2);
-      const titleY = y - 36;
-      ctx.fillStyle = "rgba(5,8,22,.92)";
-      ctx.fillRect(titleX + 3, titleY + 3, titleW, 21);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(titleX, titleY, titleW, 21);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(titleX + 4, titleY + 4, titleW - 8, 13);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(this.title, titleX + 6, titleY + 15);
-      ctx.fillStyle = COLORS.red;
-      ctx.fillRect(x, y - 10, this.w, 5);
-      ctx.fillStyle = COLORS.green;
-      ctx.fillRect(x, y - 10, this.w * clamp(this.hp / this.maxHp, 0, 1), 5);
+      window.GameArt.enemy(ctx, this, cam);
     }
   }
 
@@ -756,6 +664,9 @@
       this.flash = 0;
       this.phase = 1;
       this.dead = false;
+      this.hitStun = 0;
+      this.animTime = 0;
+      this.walkCycle = 0;
       this.actionText = "";
       this.actionTimer = 0;
     }
@@ -765,8 +676,13 @@
     }
 
     update(dt, game) {
+      this.animTime += dt;
+      this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
       if (game.freezeTimer > 0) return;
+      if (updateHitStun(this, dt, game)) return;
+      this.walkCycle += Math.abs(this.vx || 45) * dt * 0.07;
       this.flash = Math.max(0, this.flash - dt);
+      this.attackTimer = Math.max(0, (this.attackTimer || 0) - dt);
       this.actionTimer = Math.max(0, this.actionTimer - dt);
       this.dir = game.player.x < this.x ? -1 : 1;
       const hpPct = this.hp / this.maxHp;
@@ -774,6 +690,11 @@
         this.phase = hpPct < 0.34 ? 3 : hpPct < 0.67 ? 2 : 1;
       }
       const dx = game.player.x - this.x;
+      if (this.rushTimer > 0) {
+        this.rushTimer = Math.max(0, this.rushTimer - dt);
+        this.x = clamp(this.x + this.rushDir * 480 * dt, game.bossGate - 100, game.worldWidth - this.w);
+        if (rects(this.hitbox, game.player.hitbox)) game.player.takeDamage(18, 14, game, 'rush');
+      }
       if (Math.abs(dx) > 120) {
         this.x += Math.sign(dx) * (42 + this.floorIndex * 8) * dt;
       }
@@ -789,6 +710,8 @@
       }
       this.actionText = this.attackName(attack);
       this.actionTimer = 1.1;
+      this.attackDuration = .45;
+      this.attackTimer = .45;
       this.attackCd = clamp(1.9 - this.floorIndex * 0.08 - this.phase * 0.08, 1.05, 2.05);
 
       if (attack === "weeklyDart") {
@@ -800,8 +723,8 @@
           }));
         }
       } else if (attack === "rush") {
-        this.x += this.dir * 120;
-        if (rects(this.hitbox, game.player.hitbox)) game.player.takeDamage(18, 14, game, "rush");
+        this.rushTimer = 0.25;
+        this.rushDir = this.dir;
       } else if (attack === "pptWave") {
         game.projectiles.push(new Projectile({
           kind: "ppt", owner: "enemy", x: this.x + this.dir * 40, y: GROUND - 170,
@@ -876,10 +799,12 @@
       }[key] || key;
     }
 
-    takeDamage(amount, game) {
+    takeDamage(amount, game, knock = 0) {
       if (this.dead) return;
       this.hp -= amount;
+      this.hitReaction = .18;
       this.flash = 0.12;
+      receiveImpact(this, knock, game, 0.65);
       game.stats.hits += 1;
       game.cheer(this.hp <= 0 ? "恭喜过关!" : "恭喜破防!", this.x + this.w / 2, this.y + 8, this.hp <= 0 ? COLORS.yellow : this.color);
       game.player.rage = clamp(game.player.rage + amount * 0.28, 0, 100);
@@ -892,33 +817,7 @@
     }
 
     draw(ctx, cam) {
-      const x = Math.round(this.x - cam.x);
-      const y = Math.round(this.y - cam.y);
-      ctx.fillStyle = this.flash > 0 ? "#fff" : this.color;
-      ctx.fillRect(x + 12, y + 22, 48, 54);
-      ctx.fillStyle = "#f6c28b";
-      ctx.fillRect(x + 18, y + 2, 36, 28);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillRect(x + (this.dir > 0 ? 42 : 24), y + 13, 6, 5);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(x + 6, y + 34, 12, 34);
-      ctx.fillRect(x + 54, y + 34, 12, 34);
-      ctx.fillStyle = "#374151";
-      ctx.fillRect(x + 18, y + 76, 15, 22);
-      ctx.fillRect(x + 40, y + 76, 15, 22);
-      if (this.floorIndex === 4) {
-        ctx.fillStyle = COLORS.yellow;
-        ctx.fillRect(x + 24, y - 12, 24, 8);
-        ctx.fillStyle = COLORS.red;
-        ctx.fillRect(x + 28, y - 20, 16, 8);
-      }
-      if (this.actionTimer > 0) {
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(x - 28, y - 42, 128, 22);
-        ctx.fillStyle = COLORS.ink;
-        ctx.font = "13px Courier New";
-        ctx.fillText(this.actionText, x - 22, y - 27);
-      }
+      window.GameArt.enemy(ctx, this, cam, true);
     }
   }
 

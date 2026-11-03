@@ -7,6 +7,7 @@
       this.dashDir = 0;
 
       window.addEventListener("keydown", (event) => {
+        if (event.target.closest && event.target.closest('button[data-press]') && (event.key === 'Enter' || event.key === ' ')) return;
         const key = this.normalize(event.key);
         if (!key) return;
         if (["left", "right", "up", "space", "s", "j", "k", "l", "v", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) {
@@ -21,6 +22,15 @@
       });
 
       this.bindTouchControls();
+      window.addEventListener('blur', () => this.reset());
+      document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
+    }
+
+    reset() {
+      this.down = {};
+      this.pressed = {};
+      this.dashDir = 0;
+      document.querySelectorAll('.is-pressed').forEach(button => button.classList.remove('is-pressed'));
     }
 
     normalize(key) {
@@ -81,6 +91,10 @@
           keys.forEach((key) => this.setKey(key, false));
         };
 
+        button.addEventListener('click', event => {
+          if (event.detail !== 0) return;
+          keys.forEach(key => { this.setKey(key, true); this.setKey(key, false); });
+        });
         button.addEventListener("pointerdown", press);
         button.addEventListener("pointerup", release);
         button.addEventListener("pointercancel", release);

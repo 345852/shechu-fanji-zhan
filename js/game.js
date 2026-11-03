@@ -6,7 +6,19 @@
     constructor(canvas) {
       this.canvas = canvas;
       this.ctx = canvas.getContext("2d");
-      this.ctx.imageSmoothingEnabled = false;
+      this.ctx.imageSmoothingEnabled = true;
+      this.pixelRatio = 1;
+      this.reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      this.resizeCanvas();
+      if (window.ResizeObserver) {
+        this.resizeObserver = new ResizeObserver(() => this.resizeCanvas());
+        this.resizeObserver.observe(canvas);
+      }
+      window.addEventListener('resize', () => this.resizeCanvas());
+      document.addEventListener('visibilitychange', () => {
+        this.last = performance.now();
+        if (document.hidden && this.state === 'playing') this.state = 'paused';
+      });
       this.input = new window.Input();
       this.player = new window.Player();
       this.state = "title";
@@ -22,7 +34,6 @@
       this.slashes = [];
       this.floatingTexts = [];
       this.hitCheers = [];
-      this.hitStopTimer = 0;
       this.callout = null;
       this.boss = null;
       this.camera = { x: 0, y: 0 };
@@ -42,6 +53,19 @@
       const doc = window.document;
       this.ultimateButton = doc && doc.querySelector ? doc.querySelector(".touch-btn.ultimate") : null;
       this.perkButton = doc && doc.querySelector ? doc.querySelector(".perk-btn") : null;
+    }
+
+    resizeCanvas() {
+      const bounds = this.canvas.getBoundingClientRect();
+      const density = Math.min(window.devicePixelRatio || 1, 2.5);
+      const width = Math.max(W, Math.round(bounds.width * density));
+      const height = Math.round(width * H / W);
+      if (this.canvas.width !== width || this.canvas.height !== height) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+      }
+      this.pixelRatio = width / W;
+      this.ctx.imageSmoothingEnabled = true;
     }
 
     makeStats() {
@@ -74,11 +98,15 @@
     }
 
     loop(now) {
-      const dt = Math.min(0.033, (now - this.last) / 1000 || 0);
+      // Bound simulation steps while rendering on every display refresh (60/120 Hz).
+      const elapsed = Math.max(0, Math.min(0.05, (now - this.last) / 1000));
       this.last = now;
-      this.update(dt);
+      const steps = Math.max(1, Math.ceil(elapsed / (1 / 120)));
+      for (let i = 0; i < steps; i += 1) {
+        this.update(elapsed / steps);
+        this.input.afterFrame();
+      }
       this.draw();
-      this.input.afterFrame();
       requestAnimationFrame((next) => this.loop(next));
     }
 
@@ -113,7 +141,6 @@
       this.slashes = [];
       this.floatingTexts = [];
       this.hitCheers = [];
-      this.hitStopTimer = 0;
       this.callout = null;
       this.boss = null;
       this.enemies = this.level.enemies.map((enemy) => new window.Enemy(enemy.type, enemy.x));
@@ -130,7 +157,9 @@
     }
 
     syncCameraToPlayer() {
-      this.camera.x = this.player.x + this.player.w / 2 - W / 2;
+      const target = clamp(this.player.x + this.player.w / 2 - W * 0.4, 0, this.worldWidth - W);
+      const dt = arguments[0];
+      this.camera.x = dt === undefined ? target : this.camera.x + (target - this.camera.x) * (1 - Math.exp(-10 * dt));
       this.camera.y = 0;
     }
 
@@ -278,8 +307,8 @@
     }
 
     breathe(text, color, stop, duration) {
-      if (text) this.caption(text, color, duration);
-      this.hitStopTimer = Math.max(this.hitStopTimer, Math.min(stop || 0.16, 0.38));
+      // Feedback must never stop simulation, input, camera, or effect lifetimes.
+      if (text) this.caption(text, color, Math.min(duration || 0.65, 0.75));
     }
 
     updateCallout(dt) {
@@ -298,19 +327,28 @@
 
     syncTouchUi() {
       const ratio = clamp(this.player.rage / 100, 0, 1);
-      const ready = ratio >= 1 && this.state === "playing" && this.freezeTimer <= 0;
+      const ready = ratio >= 1 && this.state === 'playing' && this.freezeTimer <= 0;
+      const uses = this.task.adUsesLeft;
+      const charge = this.freezeTimer > 0 ? '释放中' : ready ? 'READY' : `${Math.round(ratio * 100)}%`;
+      const signature = [charge, uses, this.privilegeTimer > 0, this.state, this.floorIndex].join('|');
+      if (signature === this.uiSignature) return;
+      this.uiSignature = signature;
       if (this.ultimateButton) {
-        this.ultimateButton.style.setProperty("--ult-ratio", ratio.toFixed(2));
-        this.ultimateButton.dataset.charge = this.freezeTimer > 0 ? "释放中" : ready ? "READY" : `${Math.round(ratio * 100)}%`;
-        this.ultimateButton.classList.toggle("is-ready", ready);
-        this.ultimateButton.classList.toggle("is-active", this.freezeTimer > 0);
+        this.ultimateButton.style.setProperty('--ult-ratio', ratio.toFixed(2));
+        this.ultimateButton.dataset.charge = charge;
+        this.ultimateButton.classList.toggle('is-ready', ready);
+        this.ultimateButton.classList.toggle('is-active', this.freezeTimer > 0);
       }
       if (this.perkButton) {
-        const uses = this.task ? this.task.adUsesLeft : 0;
-        this.perkButton.dataset.charge = uses > 0 ? `${uses}次` : "0次";
-        this.perkButton.classList.toggle("no-ads", uses <= 0);
-        this.perkButton.classList.toggle("is-active", this.privilegeTimer > 0);
+        this.perkButton.dataset.charge = `${uses}次`;
+        this.perkButton.classList.toggle('no-ads', uses <= 0);
+        this.perkButton.classList.toggle('is-active', this.privilegeTimer > 0);
       }
+      const shell = document.querySelector('.cabinet');
+      if (shell) shell.dataset.state = this.state;
+      const button = document.querySelector('.system b');
+      if (button) button.textContent = this.state === 'paused' ? '继续' : this.state === 'ending' ? '再来' : '暂停';
+      document.querySelectorAll('.floor-guide li').forEach((el, i) => el.classList.toggle('active', 4 - i === this.floorIndex));
     }
 
     addSlash(area, dir, opts) {
@@ -331,7 +369,7 @@
         }
       });
       if (this.boss && !this.boss.dead && rects(area, this.boss.hitbox)) {
-        this.damageBoss(damage);
+        this.damageBoss(damage, knock);
         if (feedback) {
           this.floatText(feedback.label || `-${Math.round(damage)}`, this.boss.x + this.boss.w / 2, this.boss.y - 10, feedback.color || COLORS.yellow);
         }
@@ -340,14 +378,12 @@
       if (hit) this.screenShake = Math.max(this.screenShake, 4);
       if (hit && feedback && feedback.callout) {
         this.breathe(feedback.callout, feedback.color || COLORS.yellow, feedback.stop || 0.16, feedback.duration || 0.95);
-      } else if (hit) {
-        this.hitStopTimer = Math.max(this.hitStopTimer, 0.1);
       }
     }
 
-    damageBoss(damage) {
+    damageBoss(damage, knock = 0) {
       if (!this.boss || this.boss.dead) return;
-      this.boss.takeDamage(damage, this);
+      this.boss.takeDamage(damage, this, knock);
     }
 
     update(dt) {
@@ -357,7 +393,6 @@
       this.freezeTimer = Math.max(0, this.freezeTimer - dt);
       this.privilegeTimer = Math.max(0, this.privilegeTimer - dt);
       this.gateToastTimer = Math.max(0, this.gateToastTimer - dt);
-      this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
       this.updateCallout(dt);
       this.syncTouchUi();
 
@@ -410,18 +445,62 @@
       this.updatePlaying(dt);
     }
 
-    updatePlaying(dt) {
-      if (this.hitStopTimer > 0) {
-        this.updateParticles(dt * 0.3);
-        this.updateFloatingTexts(dt * 0.45);
-        this.updateHitCheers(dt * 0.45);
-        this.slashes.forEach((slash) => { slash.life -= dt * 0.35; });
-        this.slashes = this.slashes.filter((slash) => slash.life > 0);
-        this.syncCameraToPlayer();
-        return;
-      }
+    characterPositions() {
+      return new Map([this.player, ...this.enemies, this.boss].filter(Boolean)
+        .map(entity => [entity, { x: entity.x, y: entity.y }]));
+    }
 
+    resolveCharacterCollisions(previous = this.characterPositions()) {
+      const player = this.player;
+      const beforePlayer = previous.get(player) || player;
+      const gap = 6;
+      const opponents = [...this.enemies, this.boss].filter(entity => entity && !entity.dead);
+      for (const enemy of opponents) {
+        // Jumping above a body remains possible. On landing, bodies separate again.
+        if (player.y + player.h <= enemy.y || player.y >= enemy.y + enemy.h) continue;
+        const beforeEnemy = previous.get(enemy) || enemy;
+        const wasVerticallyTouching = beforePlayer.y + player.h > beforeEnemy.y && beforePlayer.y < beforeEnemy.y + enemy.h;
+        const oldDelta = beforeEnemy.x + enemy.w / 2 - beforePlayer.x - player.w / 2;
+        const delta = enemy.x + enemy.w / 2 - player.x - player.w / 2;
+        const side = Math.sign(wasVerticallyTouching ? oldDelta : delta) || player.dir;
+        const desired = side > 0 ? player.x + player.w + gap : player.x - enemy.w - gap;
+        if (side > 0 ? enemy.x >= desired : enemy.x <= desired) continue;
+
+        // Preserve ordering from the start of the step, including fast charge/thrust crossings.
+        const minX = 20, maxX = this.worldWidth - enemy.w - 20;
+        const fits = desired >= minX && desired <= maxX;
+        if (fits) {
+          enemy.x = desired;
+        } else {
+          const previouslySeparated = side > 0
+            ? beforeEnemy.x >= beforePlayer.x + player.w + gap - 0.001
+            : beforeEnemy.x + enemy.w + gap <= beforePlayer.x + 0.001;
+          if (previouslySeparated && (player.x - beforePlayer.x) * side > 0) {
+            // A solid level edge blocks the player's attempted push; pursuit never pushes her back.
+            enemy.x = clamp(desired, minX, maxX);
+            player.x = side > 0 ? enemy.x - player.w - gap : enemy.x + enemy.w + gap;
+            player.vx = 0;
+          } else {
+            // Recover an invalid spawn/landing overlap at an edge without moving the player.
+            const otherSide = side > 0 ? player.x - enemy.w - gap : player.x + player.w + gap;
+            enemy.x = clamp(otherSide, minX, maxX);
+          }
+        }
+        const actualSide = Math.sign(enemy.x + enemy.w / 2 - player.x - player.w / 2) || side;
+        if ((enemy.vx || 0) * actualSide < 0) enemy.vx = 0;
+        if (enemy === this.boss && enemy.rushTimer > 0) {
+          if (!(enemy.hitStun > 0)) player.takeDamage(18, 14, this, 'rush');
+          enemy.rushTimer = 0;
+        }
+      }
+    }
+
+    updatePlaying(dt) {
+      const previous = this.characterPositions();
+      this.pickups.forEach(pickup => { pickup.animTime = this.time; });
       this.player.update(dt, this);
+      if (this.state !== 'playing') return;
+      this.resolveCharacterCollisions(previous);
       this.applyHazards(dt);
       this.updatePickups();
 
@@ -448,6 +527,7 @@
       }
 
       if (this.boss) this.boss.update(dt, this);
+      this.resolveCharacterCollisions(previous);
 
       this.projectiles.forEach((projectile) => {
         projectile.update(dt, this);
@@ -461,7 +541,7 @@
             }
           });
           if (!hit && this.boss && !this.boss.dead && rects(projectile, this.boss.hitbox)) {
-            this.damageBoss(projectile.damage);
+            this.damageBoss(projectile.damage, Math.sign(projectile.vx) * 90);
             hit = true;
           }
           if (hit) projectile.dead = true;
@@ -478,7 +558,7 @@
       this.slashes.forEach((slash) => { slash.life -= dt; });
       this.slashes = this.slashes.filter((slash) => slash.life > 0);
 
-      this.syncCameraToPlayer();
+      this.syncCameraToPlayer(dt);
     }
 
     updateParticles(dt) {
@@ -559,57 +639,31 @@
       return "C";
     }
 
-    drawCenteredText(ctx, text, y, font, color) {
-      ctx.font = font;
-      ctx.fillStyle = color;
-      ctx.fillText(text, Math.round(W / 2 - ctx.measureText(text).width / 2), y);
-    }
 
     draw() {
       const ctx = this.ctx;
-      ctx.save();
+      ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
       ctx.clearRect(0, 0, W, H);
-      const shakeX = this.screenShake ? (Math.random() - 0.5) * this.screenShake : 0;
-      const shakeY = this.screenShake ? (Math.random() - 0.5) * this.screenShake : 0;
-      ctx.translate(Math.round(shakeX), Math.round(shakeY));
-
-      if (this.state === "title") {
-        this.drawTitle(ctx);
-      } else {
-        this.drawWorld(ctx);
-        this.drawHud(ctx);
-        if (this.state === "paused") this.drawOverlay(ctx, "暂停摸鱼中", "点开始继续");
-        if (this.state === "down") this.drawOverlay(ctx, "被 KPI 放倒", "正在从工位复活");
-        if (this.state === "floorClear") this.drawOverlay(ctx, "楼层清空", "电梯上行中");
-        if (this.state === "ending") this.drawEnding(ctx);
-      }
-      ctx.restore();
+      if (this.state === 'title') { this.drawTitle(ctx); return; }
+      this.drawWorld(ctx);
+      this.drawHud(ctx);
+      if (this.state === 'paused') this.drawOverlay(ctx, '暂停摸鱼中', '按 ENTER 或点继续返回战斗');
+      if (this.state === 'down') this.drawOverlay(ctx, '被 KPI 放倒', '正在从工位复活');
+      if (this.state === 'floorClear') this.drawOverlay(ctx, '验收通过', '下一层，继续反击');
+      if (this.state === 'ending') this.drawEnding(ctx);
     }
 
     drawTitle(ctx) {
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(0, 0, W, H);
-      this.drawCity(ctx, { sky: "#111827", back: "#26305f", floor: "#46516f", neon: COLORS.yellow }, 0);
-      this.drawCenteredText(ctx, "社畜反击战", 148, "46px Courier New", COLORS.yellow);
-      ctx.fillStyle = COLORS.pink;
-      ctx.fillRect(W / 2 - 128, 166, 256, 8);
-      this.drawCenteredText(ctx, "从工位推进到顶楼", 220, "18px Courier New", "#ffffff");
-      this.drawCenteredText(ctx, "把延期事项推进上线", 246, "18px Courier New", "#ffffff");
-      this.drawCenteredText(ctx, "点开始进入公司大楼", 294, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, "收集资料 · 处理阻碍 · 通过验收", 322, "18px Courier New", COLORS.cyan);
-      this.drawCenteredText(ctx, "5 层交付 · 进度门槛 · 特权续航", 362, "16px Courier New", "#fff7d8");
-      this.drawPixelWorker(ctx, W / 2 - 52, 410, 1, 3);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(W / 2 + 26, 442, 120, 14);
-      ctx.fillStyle = COLORS.ink;
-      ctx.font = "18px Courier New";
-      ctx.fillText("上线单", W / 2 + 58, 456);
+      window.GameArt.title(ctx, this);
     }
 
     drawWorld(ctx) {
+      ctx.save();
+      const shake = this.reducedMotion ? 0 : Math.min(2.5, this.screenShake * 0.22);
+      ctx.translate(Math.sin(this.time * 66) * shake, Math.cos(this.time * 49) * shake * 0.45);
       this.drawCity(ctx, this.level.theme, this.camera.x);
       ctx.save();
-      ctx.translate(-Math.round(this.camera.x), -Math.round(this.camera.y));
+      ctx.translate(-this.camera.x, -this.camera.y);
       const worldSpace = { x: 0, y: 0 };
       this.drawOffice(ctx);
       this.drawHazards(ctx);
@@ -617,11 +671,12 @@
       this.enemies.forEach((enemy) => enemy.draw(ctx, worldSpace));
       if (this.boss) this.boss.draw(ctx, worldSpace);
       this.projectiles.forEach((projectile) => projectile.draw(ctx, worldSpace));
-      this.slashes.forEach((slash) => this.drawSlash(ctx, slash));
       this.player.draw(ctx, worldSpace);
+      this.slashes.forEach((slash) => this.drawSlash(ctx, slash));
       this.particles.forEach((particle) => particle.draw(ctx, worldSpace));
       this.floatingTexts.forEach((item) => this.drawFloatingText(ctx, item));
       this.hitCheers.forEach((item) => this.drawHitCheer(ctx, item));
+      ctx.restore();
       ctx.restore();
       if (this.phase === "boss") this.drawBossHp(ctx);
       if (this.freezeTimer > 0) this.drawUltimateActive(ctx);
@@ -630,60 +685,15 @@
     }
 
     drawCity(ctx, theme, camX) {
-      ctx.fillStyle = theme.sky;
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = theme.back;
-      for (let i = -1; i < 9; i += 1) {
-        const x = Math.round(i * 150 - (camX || 0) * 0.16) % 1200;
-        const h = 130 + (i % 3) * 34;
-        ctx.fillRect(x, GROUND - 190 - h * 0.25, 96, h);
-        ctx.fillStyle = "rgba(255,255,255,.18)";
-        for (let y = GROUND - 170 - h * 0.25; y < GROUND - 30; y += 28) {
-          ctx.fillRect(x + 16, y, 12, 8);
-          ctx.fillRect(x + 52, y, 12, 8);
-        }
-        ctx.fillStyle = theme.back;
-      }
-      ctx.fillStyle = "rgba(255,255,255,.08)";
-      ctx.fillRect(0, 0, W, 124);
-      ctx.fillStyle = theme.neon;
-      ctx.fillRect(0, GROUND + 42, W, 7);
+      window.GameArt.city(ctx, theme, camX, this.time);
     }
 
     drawOffice(ctx) {
-      const floorLeft = this.camera.x - 80;
-      const floorWidth = W + 160;
-      ctx.fillStyle = this.level.theme.floor;
-      ctx.fillRect(floorLeft, GROUND, floorWidth, H - GROUND);
-      ctx.fillStyle = "#1f2937";
-      ctx.fillRect(floorLeft, GROUND, floorWidth, 10);
-      for (let x = 120; x < this.bossGate - 60; x += 230) {
-        this.drawDesk(ctx, x, GROUND - 48);
-      }
-      ctx.fillStyle = "#fff7d8";
-      ctx.fillRect(this.bossGate, GROUND - 130, 70, 130);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillRect(this.bossGate + 10, GROUND - 112, 50, 112);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "16px Courier New";
-      ctx.fillText("验收", this.bossGate + 12, GROUND - 88);
-      ctx.font = "13px Courier New";
-      ctx.fillText(`${this.level.requiredProgress}%`, this.bossGate + 15, GROUND - 66);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(this.level.floor, 48, 64);
+      window.GameArt.office(ctx, this);
     }
 
     drawDesk(ctx, x, y) {
-      ctx.fillStyle = "#7c3f1d";
-      ctx.fillRect(x, y + 24, 86, 18);
-      ctx.fillStyle = "#c08457";
-      ctx.fillRect(x - 5, y + 16, 96, 12);
-      ctx.fillStyle = "#9ca3af";
-      ctx.fillRect(x + 20, y, 42, 24);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x + 24, y + 5, 34, 14);
-      ctx.fillStyle = COLORS.cyan;
-      ctx.fillRect(x + 28, y + 8, 24, 4);
+      window.GameArt.desk(ctx, x, y);
     }
 
     drawHazards(ctx) {
@@ -709,391 +719,51 @@
     }
 
     drawSlash(ctx, slash) {
-      const a = clamp(slash.life / slash.maxLife, 0, 1);
-      const area = slash.area;
-      const tipX = slash.dir > 0 ? area.x + area.w : area.x;
-      ctx.globalAlpha = a;
-      if (slash.kind === "reflect") {
-        const sx = slash.dir > 0 ? area.x + area.w - 10 : area.x - 8;
-        ctx.fillStyle = "rgba(39,212,255,.45)";
-        ctx.fillRect(sx - 6, area.y - 6, 24, area.h + 14);
-        ctx.fillStyle = COLORS.cyan;
-        ctx.fillRect(sx, area.y - 10, 8, area.h + 22);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(sx + 3, area.y - 2, 2, area.h + 4);
-        ctx.fillStyle = COLORS.yellow;
-        for (let i = 0; i < 4; i += 1) {
-          ctx.fillRect(sx + slash.dir * (15 + i * 9), area.y + 4 + i * 9, 6, 6);
-        }
-      } else if (slash.kind === "resign") {
-        const lead = slash.dir > 0 ? area.x + area.w - 12 : area.x - 34;
-        ctx.fillStyle = "rgba(255,218,20,.35)";
-        ctx.fillRect(area.x - 8, area.y + 8, area.w + 18, 18);
-        ctx.fillStyle = COLORS.pink;
-        ctx.fillRect(area.x + (slash.dir > 0 ? 4 : 22), area.y + 2, area.w - 20, 8);
-        ctx.fillStyle = "#fff7d8";
-        ctx.fillRect(lead, area.y + 7, 46, 24);
-        ctx.fillStyle = COLORS.ink;
-        ctx.font = "12px Courier New";
-        ctx.fillText("上线", lead + 9, area.y + 23);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(tipX - (slash.dir > 0 ? 2 : 18), area.y + 1, 18, area.h);
-      } else {
-        const combo = slash.combo || 1;
-        ctx.fillStyle = combo === 3 ? COLORS.pink : COLORS.yellow;
-        for (let i = 0; i < combo + 1; i += 1) {
-          const y = area.y + 5 + i * 8;
-          const inset = i * 7;
-          ctx.fillRect(area.x + inset, y, Math.max(16, area.w - inset), 7);
-        }
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(tipX + (slash.dir > 0 ? -22 : 8), area.y + 2, 15, area.h - 4);
-        if (combo === 3) {
-          ctx.fillStyle = COLORS.cyan;
-          ctx.fillRect(tipX + (slash.dir > 0 ? -10 : 0), area.y - 12, 10, area.h + 22);
-        }
-      }
-      if (slash.label) {
-        ctx.fillStyle = "rgba(5,8,22,.82)";
-        ctx.fillRect(area.x, area.y - 24, Math.min(96, Math.max(56, slash.label.length * 13)), 18);
-        ctx.fillStyle = slash.color || COLORS.yellow;
-        ctx.font = "13px Courier New";
-        ctx.fillText(slash.label, area.x + 5, area.y - 10);
-      }
-      ctx.globalAlpha = 1;
+      window.GameArt.slash(ctx, slash);
     }
 
     drawFloatingText(ctx, item) {
-      const a = clamp(item.life / item.maxLife, 0, 1);
-      ctx.globalAlpha = a;
-      ctx.font = "16px Courier New";
-      const width = Math.max(28, ctx.measureText(item.text).width + 12);
-      const x = Math.round(item.x - width / 2);
-      const y = Math.round(item.y);
-      ctx.fillStyle = "rgba(5,8,22,.84)";
-      ctx.fillRect(x, y - 16, width, 20);
-      ctx.fillStyle = item.color;
-      ctx.fillText(item.text, x + 6, y - 1);
-      ctx.globalAlpha = 1;
+      window.GameArt.floating(ctx, item);
     }
 
     drawHitCheer(ctx, item) {
-      const a = clamp(item.life / item.maxLife, 0, 1);
-      const pop = 1 + (1 - a) * 0.18;
-      const text = String(item.text);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, a * 1.25);
-      ctx.font = "18px Courier New";
-      const width = Math.min(126, Math.max(82, ctx.measureText(text).width + 20));
-      const x = Math.round(item.x - width / 2);
-      const y = Math.round(item.y);
-      ctx.translate(x + width / 2, y - 18);
-      ctx.scale(pop, pop);
-      ctx.translate(-(x + width / 2), -(y - 18));
-      ctx.fillStyle = "rgba(5,8,22,.9)";
-      ctx.fillRect(x + 4, y - 38, width, 30);
-      ctx.fillStyle = item.color || COLORS.yellow;
-      ctx.fillRect(x, y - 42, width, 30);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(x + 4, y - 38, width - 8, 22);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y - 21);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(x - 7, y - 37, 5, 5);
-      ctx.fillStyle = COLORS.pink;
-      ctx.fillRect(x + width + 3, y - 22, 6, 6);
-      ctx.restore();
+      window.GameArt.cheer(ctx, item);
     }
 
     drawCallout(ctx) {
-      const item = this.callout;
-      const a = clamp(item.life / item.maxLife, 0, 1);
-      const text = String(item.text);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, 0.45 + a * 0.55);
-      ctx.font = "20px Courier New";
-      const width = Math.min(W - 28, Math.max(172, ctx.measureText(text).width + 38));
-      const x = Math.round(W / 2 - width / 2);
-      const y = this.phase === "boss" ? 232 : 222;
-      ctx.fillStyle = "rgba(5,8,22,.92)";
-      ctx.fillRect(x + 5, y + 5, width, 46);
-      ctx.fillStyle = item.color || COLORS.yellow;
-      ctx.fillRect(x, y, width, 46);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(x + 4, y + 4, width - 8, 38);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y + 29);
-      ctx.restore();
+      window.GameArt.callout(ctx, this);
     }
 
     drawHud(ctx) {
-      ctx.fillStyle = "rgba(5,8,22,.86)";
-      ctx.fillRect(8, 8, W - 16, 130);
-      ctx.strokeStyle = COLORS.yellow;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(8, 8, W - 16, 130);
-      ctx.font = "14px Courier New";
-      ctx.fillStyle = "#fff";
-      ctx.fillText(`${this.level.floor} ${this.level.title}`, 18, 30);
-      ctx.font = "12px Courier New";
-      ctx.fillStyle = "#fff7d8";
-      ctx.fillText(`事项 ${Math.round(this.task.progress)}%  门槛 ${this.level.requiredProgress}%`, 18, 49);
-      this.drawTaskGauge(ctx, 58, 58, 116, 9);
-      ctx.fillStyle = "#fff";
-      ctx.font = "14px Courier New";
-      ctx.fillText(`弹药 ${this.player.ammo}/${this.player.maxAmmo}`, 18, 82);
-      this.drawBar(ctx, 58, 96, 116, 9, this.player.health / this.player.maxHealth, COLORS.red, "体力");
-      this.drawBar(ctx, 58, 112, 116, 9, this.player.mind / this.player.maxMind, COLORS.cyan, "心态");
-      this.drawBar(ctx, 58, 128, 116, 8, this.player.rage / 100, COLORS.yellow, "怒气");
-      this.drawMoveCard(ctx, 190, 54);
-      ctx.fillStyle = "#fff";
-      ctx.font = "13px Courier New";
-      ctx.fillText(`倒${this.stats.deaths}`, 342, 40);
-      ctx.fillText(`鱼${this.stats.moyu}`, 342, 62);
-      ctx.fillText(`${this.elapsedSeconds()}s`, 342, 84);
-      ctx.fillText(`质${Math.round(this.task.quality)}`, 342, 106);
-      if (this.player.broken > 0) this.statusTag(ctx, "破防", 12, 164, COLORS.pink);
-      if (this.player.meetingTrap > 0) this.statusTag(ctx, "会议", 70, 164, COLORS.yellow);
-      if (this.player.attackDebuff > 0) this.statusTag(ctx, "缩水", 128, 164, COLORS.orange);
-      if (this.player.moyu) this.statusTag(ctx, "摸鱼", 186, 164, COLORS.green);
-      if (this.privilegeTimer > 0) this.statusTag(ctx, "特权", 244, 164, COLORS.yellow);
+      window.GameArt.hud(ctx, this);
     }
 
-    drawMoveCard(ctx, x, y) {
-      const move = this.player.currentMove();
-      const cd = this.player.specialCd;
-      const rageRatio = clamp(this.player.rage / 100, 0, 1);
-      const rageText = this.freezeTimer > 0 ? `冻结 ${this.freezeTimer.toFixed(1)}s` : rageRatio >= 1 ? "大招 READY" : `大招 ${Math.round(rageRatio * 100)}%`;
-      const ready = rageRatio >= 1 && this.freezeTimer <= 0;
-      ctx.fillStyle = COLORS.purple;
-      ctx.fillRect(x, y, 136, 62);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, 136, 62);
-      if (ready && Math.floor(this.time * 6) % 2 === 0) {
-        ctx.strokeStyle = COLORS.yellow;
-        ctx.strokeRect(x - 3, y - 3, 142, 68);
-      }
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "13px Courier New";
-      ctx.fillText("当前招式", x + 8, y + 14);
-      ctx.fillStyle = "#fff";
-      ctx.font = "14px Courier New";
-      ctx.fillText(move.name, x + 8, y + 29);
-      ctx.fillStyle = cd > 0 ? COLORS.pink : COLORS.cyan;
-      ctx.font = "12px Courier New";
-      ctx.fillText(cd > 0 ? `CD ${cd.toFixed(1)}s` : move.hint, x + 8, y + 40);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(x + 8, y + 46, 120, 11);
-      ctx.fillStyle = ready ? COLORS.yellow : COLORS.orange;
-      ctx.fillRect(x + 8, y + 46, Math.floor(120 * rageRatio), 11);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + 8, y + 46, 120, 11);
-      ctx.fillStyle = ready ? COLORS.ink : "#ffffff";
-      ctx.font = "11px Courier New";
-      ctx.fillText(rageText, x + 12, y + 55);
-    }
 
     drawUltimateActive(ctx) {
-      const a = clamp(this.freezeTimer / 3, 0, 1);
-      ctx.save();
-      ctx.globalAlpha = 0.24 + a * 0.2;
-      ctx.fillStyle = COLORS.yellow;
-      for (let y = 176; y < 344; y += 24) {
-        ctx.fillRect(0, y + Math.floor((this.time * 60) % 12), W, 4);
-      }
-      ctx.globalAlpha = 1;
-      const text = "已读不回生效中";
-      ctx.font = "20px Courier New";
-      const width = Math.max(190, ctx.measureText(text).width + 34);
-      const x = Math.round(W / 2 - width / 2);
-      const y = 164;
-      ctx.fillStyle = "rgba(5,8,22,.9)";
-      ctx.fillRect(x + 5, y + 5, width, 36);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(x, y, width, 36);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillText(text, x + Math.round((width - ctx.measureText(text).width) / 2), y + 24);
-      ctx.restore();
+      window.GameArt.ultimate(ctx, this);
     }
 
-    drawBar(ctx, x, y, w, h, ratio, color, label) {
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, Math.floor(w * clamp(ratio, 0, 1)), h);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "#fff";
-      ctx.font = "13px Courier New";
-      ctx.fillText(label, x - 42, y + h - 2);
-    }
 
-    drawTaskGauge(ctx, x, y, w, h) {
-      const ratio = this.task.progress / this.task.target;
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = COLORS.green;
-      ctx.fillRect(x, y, Math.floor(w * clamp(ratio, 0, 1)), h);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "#fff";
-      ctx.font = "13px Courier New";
-      ctx.fillText("事项", x - 42, y + h);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "10px Courier New";
-      const text = `${Math.round(this.task.progress)}/${this.task.target}`;
-      ctx.fillText(text, x + w - 42, y + h - 1);
-    }
 
-    statusTag(ctx, text, x, y, color) {
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y - 15, 52, 18);
-      ctx.fillStyle = COLORS.ink;
-      ctx.font = "13px Courier New";
-      ctx.fillText(text, x + 8, y - 2);
-    }
 
     drawBossHp(ctx) {
-      if (!this.boss) return;
-      const y = 150;
-      ctx.fillStyle = "rgba(17,24,39,.9)";
-      ctx.fillRect(28, y, W - 56, 32);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(28, y, W - 56, 32);
-      ctx.fillStyle = COLORS.red;
-      ctx.fillRect(34, y + 7, Math.floor((W - 68) * clamp(this.boss.hp / this.boss.maxHp, 0, 1)), 18);
-      ctx.fillStyle = "#fff";
-      ctx.font = "15px Courier New";
-      const phase = this.floorIndex === 4 ? ` P${this.boss.phase}` : "";
-      ctx.fillText(`${this.boss.name}${phase}`, 38, y + 22);
+      window.GameArt.bossHp(ctx, this);
     }
 
     drawToast(ctx) {
-      const text = this.message;
-      ctx.font = "16px Courier New";
-      const width = Math.min(W - 24, Math.max(180, ctx.measureText(text).width + 32));
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(W / 2 - width / 2, 190, width, 30);
-      ctx.strokeStyle = COLORS.ink;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(W / 2 - width / 2, 190, width, 30);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillText(text, W / 2 - width / 2 + 16, 211);
+      window.GameArt.toast(ctx, this);
     }
 
     drawOverlay(ctx, title, sub) {
-      ctx.fillStyle = "rgba(0,0,0,.55)";
-      ctx.fillRect(0, 0, W, H);
-      this.drawCenteredText(ctx, title, H / 2 - 28, "34px Courier New", COLORS.yellow);
-      this.drawCenteredText(ctx, sub, H / 2 + 12, "18px Courier New", "#fff");
+      window.GameArt.overlay(ctx, title, sub);
     }
 
-    drawPixelPanel(ctx, x, y, w, h, color) {
-      ctx.fillStyle = "rgba(0,0,0,.42)";
-      ctx.fillRect(x + 8, y + 8, w, h);
-      ctx.fillStyle = color || COLORS.yellow;
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + 9, y + 9, w - 18, h - 18);
-    }
 
-    drawMetricBox(ctx, label, value, x, y, w, color) {
-      ctx.fillStyle = "rgba(255,255,255,.08)";
-      ctx.fillRect(x, y, w, 48);
-      ctx.strokeStyle = color || COLORS.cyan;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, 48);
-      ctx.fillStyle = "#fff7d8";
-      ctx.font = "12px Courier New";
-      ctx.fillText(label, x + 8, y + 16);
-      ctx.fillStyle = color || "#ffffff";
-      ctx.font = "18px Courier New";
-      ctx.fillText(String(value), x + 8, y + 38);
-    }
 
     drawEnding(ctx) {
-      ctx.fillStyle = "rgba(5,8,22,.88)";
-      ctx.fillRect(0, 0, W, H);
-      const t = this.stateTimer;
-      const confetti = [COLORS.yellow, COLORS.pink, COLORS.cyan, COLORS.green, COLORS.orange];
-      for (let i = 0; i < 30; i += 1) {
-        const x = Math.round((i * 47 + t * (42 + i % 4 * 10)) % W);
-        const y = Math.round((i * 71 + t * (28 + i % 5 * 8)) % H);
-        ctx.fillStyle = confetti[i % confetti.length];
-        ctx.fillRect(x, y, 6 + i % 3, 6 + (i + 1) % 3);
-      }
-
-      const score = this.settlementScore();
-      const grade = this.settlementGrade(score);
-      this.drawPixelPanel(ctx, 24, 48, W - 48, 574, COLORS.yellow);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.font = "30px Courier New";
-      ctx.fillText("事项结算单", 54, 92);
-      ctx.fillStyle = grade === "S" ? COLORS.yellow : grade === "A" ? COLORS.cyan : COLORS.pink;
-      ctx.fillRect(318, 64, 54, 42);
-      ctx.fillStyle = COLORS.ink;
-      ctx.font = "32px Courier New";
-      ctx.fillText(grade, 337, 96);
-
-      const workerX = 58 + Math.min(38, t * 26);
-      this.drawPixelWorker(ctx, workerX, 128, 1, 2);
-      ctx.fillStyle = "#7c3f1d";
-      ctx.fillRect(274, 168, 84, 28);
-      ctx.fillStyle = "#fff7d8";
-      const letterY = t < 1.8 ? 118 + t * 30 : 172;
-      ctx.fillRect(194, letterY, 74, 28);
-      ctx.fillStyle = COLORS.ink;
-      ctx.font = "13px Courier New";
-      ctx.fillText("上线单", 211, letterY + 19);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "18px Courier New";
-      ctx.fillText("恭喜你，事项已上线！", 162, 138);
-      ctx.fillStyle = COLORS.cyan;
-      ctx.font = "14px Courier New";
-      ctx.fillText("交付结果：老板已确认", 162, 162);
-
-      this.drawMetricBox(ctx, "通关时间", `${this.elapsedSeconds()} 秒`, 50, 220, 154, COLORS.cyan);
-      this.drawMetricBox(ctx, "事项进度", `${Math.round(this.task.progress)}%`, 226, 220, 154, COLORS.green);
-      this.drawMetricBox(ctx, "交付质量", `${Math.round(this.task.quality)}%`, 50, 286, 154, COLORS.cyan);
-      this.drawMetricBox(ctx, "资料收集", `${this.stats.workItems}/5`, 226, 286, 154, COLORS.yellow);
-      this.drawMetricBox(ctx, "处理阻碍", `${this.stats.defeated} 个`, 50, 352, 154, COLORS.green);
-      this.drawMetricBox(ctx, "验收通过", `${this.stats.bosses}/5`, 226, 352, 154, COLORS.pink);
-      this.drawMetricBox(ctx, "承受伤害", Math.round(this.stats.damageTaken), 50, 418, 154, COLORS.red);
-      this.drawMetricBox(ctx, "特权使用", `${3 - this.task.adUsesLeft} 次`, 226, 418, 154, COLORS.orange);
-
-      ctx.fillStyle = COLORS.pink;
-      ctx.fillRect(50, 494, 330, 44);
-      ctx.fillStyle = "#050816";
-      ctx.fillRect(55, 499, 320, 34);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "20px Courier New";
-      ctx.fillText(`评分 ${score} · ${this.title()}`, 78, 522);
-
-      this.drawCenteredText(ctx, "点开始再来一轮", 586, "20px Courier New", COLORS.yellow);
+      window.GameArt.ending(ctx, this);
     }
 
-    drawPixelWorker(ctx, x, y, dir, scale) {
-      const s = scale || 1;
-      ctx.fillStyle = "#f6c28b";
-      ctx.fillRect(x + 10 * s, y + 2 * s, 16 * s, 16 * s);
-      ctx.fillStyle = COLORS.cyan;
-      ctx.fillRect(x + 6 * s, y + 19 * s, 24 * s, 24 * s);
-      ctx.fillStyle = "#111827";
-      ctx.fillRect(x + (dir > 0 ? 21 : 9) * s, y + 8 * s, 4 * s, 4 * s);
-      ctx.fillRect(x + 7 * s, y + 43 * s, 8 * s, 14 * s);
-      ctx.fillRect(x + 21 * s, y + 43 * s, 8 * s, 14 * s);
-      ctx.fillStyle = COLORS.yellow;
-      ctx.fillRect(x + (dir > 0 ? 27 : -18) * s, y + 29 * s, 26 * s, 9 * s);
-    }
   }
 
   window.BossRushGame = Game;

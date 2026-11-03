@@ -1,0 +1,628 @@
+:root {
+  color-scheme:dark;
+  --bg:#101922;
+  --panel:#1c2c39;
+  --ink:#ebf1ee;
+  --muted:#9caeaf;
+  --orange:#ffbc69;
+  --cyan:#82dbd2;
+  --edge:#324752;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif
+}
+
+* {
+  box-sizing:border-box
+}
+
+body {
+  margin:0;
+  background:radial-gradient(ellipse at 58% 40%,#223b43 0,transparent 54%),var(--bg);
+  color:var(--ink);
+  overflow:hidden
+}
+
+body:before {
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:.16;
+  background-image:linear-gradient(#66858c22 1px,transparent 1px),linear-gradient(90deg,#66858c22 1px,transparent 1px);
+  background-size:64px 64px;
+  mask-image:linear-gradient(transparent,#000)
+}
+
+button {
+  font:inherit
+}
+
+button:focus-visible {
+  outline:3px solid #fff;
+  outline-offset:4px
+}
+
+button {
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none
+}
+
+button:disabled {
+  cursor:default
+}
+
+.shell {
+  height:100dvh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:clamp(28px,5vw,90px);
+  padding:20px 40px
+}
+
+.intro {
+  width:320px;
+  align-self:stretch;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding:22px 0;
+  flex-shrink:0
+}
+
+.brand {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  font-size:11px;
+  font-weight:750;
+  letter-spacing:1.6px;
+  white-space:nowrap
+}
+
+.brand-icon {
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border:1px solid #839c99;
+  border-radius:8px;
+  font-size:21px;
+  color:var(--orange)
+}
+
+.brand>span:last-child {
+  font-size:9px;
+  letter-spacing:1px;
+  color:#829594;
+  margin-left:auto
+}
+
+.eyebrow {
+  font-size:10px;
+  letter-spacing:2px;
+  font-weight:600;
+  color:var(--cyan);
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+
+.eyebrow>span {
+  height:6px;
+  width:6px;
+  background:var(--cyan);
+  border-radius:50%;
+  box-shadow:0 0 14px #82dbd2
+}
+
+.intro h1 {
+  font-size:clamp(40px,4.4vw,66px);
+  letter-spacing:-3px;
+  line-height:1.2;
+  margin:26px 0;
+  font-weight:900
+}
+
+.intro h1 span {
+  color:var(--orange)
+}
+
+.intro-desc {
+  font-size:14px;
+  line-height:1.9;
+  color:#b1c1c1
+}
+
+.intro-rule {
+  width:36px;
+  height:2px;
+  background:#547477;
+  margin:28px 0 18px
+}
+
+.intro-note {
+  font-size:11px;
+  color:#8da4a7;
+  letter-spacing:.4px
+}
+
+.keyboard-guide {
+  font-size:11px;
+  color:#99acad
+}
+
+.guide-label {
+  font-size:9px;
+  letter-spacing:1.8px;
+  display:block;
+  margin-bottom:16px;
+  color:#b2c3c1
+}
+
+.keyboard-guide p {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:10px 0
+}
+
+kbd {
+  display:inline-grid;
+  min-width:23px;
+  height:24px;
+  padding:0 6px;
+  place-items:center;
+  background:#1f3039;
+  border:1px solid #42565e;
+  border-bottom-width:3px;
+  border-radius:5px;
+  font:10px ui-monospace,monospace;
+  color:#c6d4d1
+}
+
+.intro footer {
+  font-size:10px;
+  color:#788e94;
+  display:flex;
+  justify-content:space-between
+}
+
+.intro footer span {
+  color:var(--orange)
+}
+
+.cabinet {
+  position:relative;
+  flex:none;
+  width:min(480px,calc((100dvh - 40px)*430/760));
+  aspect-ratio:430/760;
+  border:1px solid #52706d;
+  border-radius:25px;
+  overflow:hidden;
+  background:#152b38;
+  box-shadow:0 0 0 6px #101c24,0 0 0 7px #30454a,12px 20px 0 #0b141b,0 35px 90px #0009;
+  container-type:inline-size
+}
+
+.screen-wrap {
+  position:absolute;
+  inset:0
+}
+
+canvas {
+  display:block;
+  width:100%;
+  height:100%;
+  image-rendering:auto
+}
+
+.title-menu {
+  position:absolute;
+  left:9%;
+  right:9%;
+  bottom:5%;
+  text-align:center
+}
+
+.start-adventure {
+  width:100%;
+  height:15cqw;
+  border-radius:12px;
+  border:1px solid #ffe1a0;
+  box-shadow:inset 0 2px 0 #ffe4a1,0 5px 0 #a85b31,0 10px 25px #0004;
+  background:linear-gradient(160deg,#ffd489,#ffac62);
+  color:#352921;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 25px;
+  font-size:5cqw;
+  font-weight:850;
+  transition:transform .15s,box-shadow .15s
+}
+
+.start-adventure:hover {
+  filter:brightness(1.06)
+}
+
+.start-adventure:active,.start-adventure.is-pressed {
+  transform:translateY(4px);
+  box-shadow:inset 0 2px 0 #ffe4a1,0 1px 0 #a85b31
+}
+
+.start-adventure>span:last-child {
+  font-size:7cqw;
+  font-weight:400
+}
+
+.title-menu p {
+  font-size:2.5cqw;
+  letter-spacing:.5px;
+  color:#bbc7be;
+  margin:18px 0 22px
+}
+
+.title-menu p span {
+  padding:0 6px;
+  color:#637c80
+}
+
+.title-tags {
+  display:flex;
+  justify-content:space-between;
+  border-top:1px solid #47626b;
+  padding-top:17px;
+  color:#a7c0bd;
+  font-size:2.6cqw
+}
+
+.touch-controls {
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  display:grid;
+  grid-template-columns:.9fr 1.35fr;
+  gap:10px;
+  padding:3.5cqw 4cqw 5cqw;
+  background:linear-gradient(180deg,#172a35ed,#101e29);
+  border-top:1px solid #49616a;
+  box-shadow:0 -10px 35px #07141e44;
+  user-select:none;
+  -webkit-user-select:none;
+  touch-action:none
+}
+
+.control-top {
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:1cqw;
+  gap:4px
+}
+
+.control-status {
+  font-size:2.25cqw;
+  color:#93abaa;
+  letter-spacing:.2px
+}
+
+.move-pad,.action-pad {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-rows:repeat(2,12.2cqw);
+  gap:2cqw
+}
+
+.touch-btn {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  min-width:0;
+  padding:0;
+  border:1px solid #5d747c;
+  border-radius:9px;
+  color:#e3efeb;
+  background:linear-gradient(155deg,#405764,#2b404d);
+  box-shadow:inset 0 1px 0 #ffffff25,0 4px 0 #091723,0 5px 0 #47606b;
+  font-size:3.1cqw;
+  transition:transform .09s,box-shadow .09s,filter .15s
+}
+
+.touch-btn b {
+  font-weight:700
+}
+
+.touch-btn small {
+  font-size:1.9cqw;
+  font-weight:500;
+  opacity:.7
+}
+
+.touch-btn.move b {
+  font-size:4cqw
+}
+
+.touch-btn:hover {
+  filter:brightness(1.12)
+}
+
+.touch-btn:active,.touch-btn.is-pressed {
+  transform:translateY(3px);
+  box-shadow:inset 0 1px 6px #0003,0 1px 0 #091723,0 2px 0 #47606b
+}
+
+.touch-btn.combo {
+  background:linear-gradient(145deg,#ffce87,#f5a963);
+  border-color:#ffdc9c;
+  color:#382c22;
+  box-shadow:inset 0 1px 0 #ffedbc,0 4px 0 #9b582e,0 5px 0 #ebaf75
+}
+
+.touch-btn.skill {
+  background:linear-gradient(145deg,#395961,#2a434f);
+  color:#b0eee3
+}
+
+.touch-btn.ultimate {
+  overflow:hidden;
+  background:linear-gradient(145deg,#77594f,#453b3f);
+  border-color:#c79575;
+  color:#ffd89c
+}
+
+.charge-fill {
+  position:absolute;
+  bottom:0;
+  left:0;
+  height:3px;
+  background:#ffcc83;
+  width:calc(var(--ult-ratio,0)*100%);
+  transition:width .15s
+}
+
+.ultimate:after {
+  content:attr(data-charge);
+  position:absolute;
+  top:3px;
+  right:4px;
+  font-size:1.65cqw;
+  color:#ffe9c7
+}
+
+.ultimate.is-ready {
+  animation:ready 1.3s ease-in-out infinite;
+  background:linear-gradient(135deg,#eb9d59,#b45b3e);
+  color:#fff
+}
+
+.system {
+  background:linear-gradient(145deg,#344650,#24353f);
+  color:#aabfc3
+}
+
+.touch-btn.perk-btn {
+  flex-direction:row;
+  border-radius:7px;
+  padding:1.5cqw 2cqw;
+  font-size:2.5cqw;
+  color:#f6d3a0;
+  background:#34454b;
+  box-shadow:0 2px 0 #0c1b23
+}
+
+.perk-btn:after {
+  content:attr(data-charge);
+  font-size:2cqw;
+  background:#20343d;
+  padding:2px 4px;
+  border-radius:3px
+}
+
+.perk-btn.no-ads {
+  opacity:.55
+}
+
+.jump {
+  grid-area:1/2
+}
+
+.left {
+  grid-area:2/1
+}
+
+.duck {
+  grid-area:2/2
+}
+
+.right {
+  grid-area:2/3
+}
+
+.cabinet[data-state="title"] .touch-controls {
+  display:none
+}
+
+.cabinet:not([data-state="title"]) .title-menu {
+  display:none
+}
+
+.floor-guide {
+  width:158px;
+  flex:none;
+  color:#bdccca
+}
+
+.floor-guide h2 {
+  font-size:24px;
+  line-height:1.6;
+  margin:20px 0 32px;
+  font-weight:600
+}
+
+.floor-guide ol {
+  list-style:none;
+  padding:0;
+  margin:0
+}
+
+.floor-guide li {
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:18px 0;
+  position:relative;
+  font-size:12px;
+  color:#869da1
+}
+
+.floor-guide li:before {
+  content:"";
+  position:absolute;
+  left:15px;
+  top:0;
+  bottom:0;
+  width:1px;
+  background:#3b525a
+}
+
+.floor-guide li:first-child:before {
+  top:50%
+}
+
+.floor-guide li:last-child:before {
+  bottom:50%
+}
+
+.floor-guide li>span {
+  position:relative;
+  z-index:1;
+  width:31px;
+  height:31px;
+  display:grid;
+  place-items:center;
+  background:#172730;
+  border:1px solid #3b525a;
+  border-radius:50%;
+  font-size:10px
+}
+
+.floor-guide small {
+  display:block;
+  margin-top:5px;
+  font-size:10px;
+  color:#607c83
+}
+
+.floor-guide li.active {
+  color:var(--orange)
+}
+
+.floor-guide li.active>span {
+  border-color:#d69b61;
+  box-shadow:0 0 18px #ffb76020;
+  background:#433b32
+}
+
+.floor-guide li.active small {
+  color:#c3996e
+}
+
+.route-note {
+  font-size:10px;
+  line-height:1.9;
+  color:#779297;
+  margin-top:35px
+}
+
+@keyframes ready {
+  50% {
+    box-shadow:0 4px 0 #773e29,0 0 18px #ffc37877
+  }
+}
+
+@media(max-width:1200px) {
+  .floor-guide {
+    display:none
+  }
+  .shell {
+    gap:60px
+  }
+  .intro {
+    width:300px
+  }
+}
+
+@media(max-width:860px) {
+  .intro {
+    display:none
+  }
+  .shell {
+    padding:12px
+  }
+  .cabinet {
+    width:min(480px,calc((100dvh - 24px)*430/760));
+    border-radius:18px
+  }
+}
+
+@media(max-width:540px) {
+  .shell {
+    padding:0
+  }
+  .cabinet {
+    width:min(100vw,calc(100dvh*430/760));
+    border-radius:0;
+    border:0;
+    box-shadow:none
+  }
+  .touch-controls {
+    padding-bottom:max(5cqw,env(safe-area-inset-bottom))
+  }
+}
+
+@media(prefers-reduced-motion:reduce) {
+  .ultimate.is-ready {
+    animation:none
+  }
+  button {
+    transition:none
+  }
+}
+
+/* Give movement and combat controls comfortable targets on compact phones. */ @media (min-width:361px) and (max-width:540px) {
+  .touch-controls {
+    grid-template-columns:1fr 1.2fr
+  }
+}
+
+@media (max-width:360px) {
+  .touch-controls {
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+    padding:8px 10px max(16px,env(safe-area-inset-bottom))
+  }
+  .move-pad,.action-pad {
+    grid-template-rows:repeat(2,44px);
+    gap:6px
+  }
+  .touch-btn {
+    font-size:12px
+  }
+  .touch-btn small {
+    font-size:8px
+  }
+  .control-status {
+    font-size:8px
+  }
+  .touch-btn.perk-btn {
+    min-height:28px;
+    font-size:10px
+  }
+}
+
