@@ -1,3 +1,9 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Generated WeChat builds and local developer-tool settings
+dist/
+project.private.config.json
+*.key
+*.pem
