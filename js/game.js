@@ -129,6 +129,7 @@
     }
 
     loadFloor(index, first) {
+      this.audio.setMovement(0);
       this.floorIndex = index;
       this.level = LEVELS[index];
       this.state = "playing";
@@ -173,6 +174,7 @@
     }
 
     playerDown() {
+      this.audio.setMovement(0);
       this.stats.deaths += 1;
       this.reduceTaskQuality(7);
       this.state = "down";
@@ -181,6 +183,7 @@
     }
 
     floorClear() {
+      this.audio.setMovement(0);
       this.projectiles = [];
       this.enemies = [];
       this.freezeTimer = 0;
@@ -334,6 +337,7 @@
     }
 
     syncTouchUi() {
+      if (this.state !== "playing") this.audio.setMovement(0);
       this.audio.setActive(this.state !== "title" && this.state !== "paused" && !document.hidden);
       const ratio = clamp(this.player.rage / 100, 0, 1);
       const ready = ratio >= 1 && this.state === 'playing' && this.freezeTimer <= 0;
@@ -537,7 +541,7 @@
 
       if (this.boss) this.boss.update(dt, this);
       this.resolveCharacterCollisions(previous);
-      this.player.updateMovementAudio(previous.get(this.player), this);
+      this.player.updateMovementAudio(previous.get(this.player), this, dt);
 
       this.projectiles.forEach((projectile) => {
         projectile.update(dt, this);

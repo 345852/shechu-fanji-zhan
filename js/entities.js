@@ -400,12 +400,14 @@
       }
     }
 
-    updateMovementAudio(previous, game) {
-      if (this.dead || game.state !== "playing") return;
+    updateMovementAudio(previous, game, dt) {
+      if (this.dead || game.state !== "playing") { game.audio.setMovement(0); return; }
       if (this.onGround && previous.onGround === false) game.sound("land");
       const distance = Math.abs(this.x - previous.x);
       const walking = !!game.input.down.left !== !!game.input.down.right;
       const locked = this.broken > 0 || this.meetingTrap > 0 || game.freezeTimer > 0;
+      const moving = walking && !locked && distance > 0.001 && distance <= 16 && dt > 0;
+      game.audio.setMovement(moving ? distance / dt : 0, this.crouching);
       // Read final positions after body/wall resolution, not desired velocity or held keys alone.
       if (!walking || locked || !this.onGround || !previous.onGround || this.thrustTimer > 0 || distance < 0.001 || distance > 16) {
         this.stepDistance = 0;

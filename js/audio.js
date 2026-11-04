@@ -1,4 +1,4 @@
-/* Small, local Web Audio effects. No downloads, music loop, or audio before a gesture. */
+/* Small, local Web Audio effects. No downloads or audio before a gesture; movement uses one seamless local loop. */
 (function () {
   class GameAudio {
     constructor() {
@@ -8,6 +8,8 @@
       this.lastPlayed = new Map();
       this.pendingStart = null;
       this.pendingPreview = null;
+      this.movementLoop = null;
+      this.movementBuffer = null;
       this.gestureInGame = false;
       this.muted = false;
       try { this.muted = window.localStorage.getItem('shechu-sound-muted') === '1'; } catch (_) { /* storage may be unavailable */ }
@@ -71,6 +73,8 @@
     createGraph(context) {
       this.ctx = context;
       this.primer = null;
+      this.movementLoop = null;
+      this.movementBuffer = null;
       context.onstatechange = () => {
         if (this.ctx !== context) return;
         if (context.state === 'running') this.finishUnlock(context);
@@ -89,6 +93,8 @@
       this.noiseBuffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
       const data = this.noiseBuffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      // Prepare once during audio unlock, so the first movement never has to synthesize a loop.
+      this.createMovementBuffer();
     }
 
     finishUnlock(context) {
@@ -160,6 +166,7 @@
       this.pendingStart = null;
       this.pendingPreview = null;
       this.lastPlayed.clear();
+      this.stopMovement();
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
       this.voices.forEach(voice => {
@@ -167,6 +174,77 @@
         voice.gain.gain.setTargetAtTime(0, now, 0.003);
         try { voice.source.stop(now + 0.015); } catch (_) { /* already ended */ }
       });
+    }
+
+    createMovementBuffer() {
+      if (this.movementBuffer) return this.movementBuffer;
+      const rate = this.ctx.sampleRate, seconds = 4, beat = 0.25;
+      const buffer = this.ctx.createBuffer(1, Math.round(rate * seconds), rate);
+      const data = buffer.getChannelData(0), tau = Math.PI * 2;
+      const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46,
+        523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 587.33, 392];
+      for (let i = 0; i < data.length; i++) {
+        const time = i / rate, step = Math.floor(time / beat), t = time - step * beat;
+        const envelope = Math.min(1, t / 0.012) * Math.pow(1 - t / beat, 2);
+        const phase = tau * notes[step] * t;
+        const melody = (Math.sin(phase) + 0.25 * Math.sin(phase * 2)) * envelope * 0.12;
+        // The sustained bed uses whole cycles over four seconds so its seam cannot click.
+        const pad = (Math.sin(tau * 130.75 * time) + 0.45 * Math.sin(tau * 196 * time)
+          + 0.35 * Math.sin(tau * 261.5 * time)) * 0.035;
+        const bass = step % 2 === 0 ? Math.sin(tau * (55 * t + 45 * (1 - Math.exp(-35 * t)) / 35))
+          * envelope * Math.exp(-18 * t) * 0.08 : 0;
+        const tick = (Math.sin(tau * 3100 * t) + 0.4 * Math.sin(tau * 5700 * t))
+          * envelope * Math.exp(-50 * t) * 0.018;
+        data[i] = melody + pad + bass + tick;
+      }
+      this.movementBuffer = buffer;
+      return buffer;
+    }
+
+    setMovement(speed, crouching = false) {
+      const allowed = this.active && !this.muted && !document.hidden && this.ctx && this.ctx.state === 'running';
+      const moving = allowed && Number.isFinite(speed) && speed > 1;
+      let loop = this.movementLoop;
+      if (!loop && !moving) return;
+      if (!loop) {
+        const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+        source.buffer = this.createMovementBuffer();
+        source.loop = true;
+        gain.gain.value = 0;
+        source.connect(gain); gain.connect(this.master);
+        loop = { source, gain, level: 0, rate: 1 };
+        this.movementLoop = loop;
+        source.onended = () => {
+          source.disconnect(); gain.disconnect();
+          if (this.movementLoop === loop) this.movementLoop = null;
+        };
+        source.start(this.ctx.currentTime);
+      }
+      const now = this.ctx.currentTime;
+      const level = moving ? (crouching ? 0.24 : 0.56) : 0;
+      if (loop.level !== level) {
+        loop.gain.gain.cancelScheduledValues(now);
+        loop.gain.gain.setTargetAtTime(level, now, level > 0 ? 0.045 : 0.035);
+        if (level === 0) loop.gain.gain.setValueAtTime(0, now + 0.20);
+        loop.level = level;
+      }
+      if (moving) {
+        const rate = Math.max(0.94, Math.min(1.12, 0.92 + speed / 190 * 0.08));
+        if (Math.abs(loop.rate - rate) > 0.015) {
+          loop.source.playbackRate.setTargetAtTime(rate, now, 0.12);
+          loop.rate = rate;
+        }
+      }
+    }
+
+    stopMovement() {
+      const loop = this.movementLoop;
+      if (!loop || !this.ctx) return;
+      this.movementLoop = null;
+      const now = this.ctx.currentTime;
+      loop.gain.gain.cancelScheduledValues(now);
+      loop.gain.gain.setTargetAtTime(0, now, 0.003);
+      try { loop.source.stop(now + 0.015); } catch (_) { /* already ended */ }
     }
 
     play(name, variation = 1) {

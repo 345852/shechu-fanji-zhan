@@ -14,7 +14,7 @@ function setup({ muted = false, suspended = false, supported = true, brokenStora
     cancelScheduledValues(...args) { this.events.push(['cancel', ...args]); },
     setTargetAtTime(...args) { this.events.push(['target', ...args]); }
   });
-  const node = () => ({ gain: param(), frequency: param(), Q: param(), threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(),
+  const node = () => ({ gain: param(), playbackRate: param(), frequency: param(), Q: param(), threshold: param(), knee: param(), ratio: param(), attack: param(), release: param(),
     connect() {}, disconnect() { this.disconnected = true; },
     start(at) { this.started = at; }, stop(at) { (this.stops ||= []).push(at); }
   });
@@ -23,7 +23,7 @@ function setup({ muted = false, suspended = false, supported = true, brokenStora
     createGain() { return node(); }
     createDynamicsCompressor() { return node(); }
     createBiquadFilter() { return node(); }
-    createBuffer(_, length) { return { length, getChannelData: () => new Float32Array(length) }; }
+    createBuffer(_, length) { const data = new Float32Array(length); return { length, getChannelData: () => data }; }
     createBufferSource() { const n = node(); sources.push(n); return n; }
     createOscillator() { const n = node(); sources.push(n); return n; }
     resume() {
@@ -199,4 +199,69 @@ test('outside gestures and remembered mute never create audio or change the audi
   assert.equal(outside.contexts.length,0);assert.equal(outside.window.navigator.audioSession.type,undefined);
   const muted=setup({muted:true});muted.gesture('pointerdown');muted.gesture('touchend');
   assert.equal(muted.contexts.length,0);assert.equal(muted.window.navigator.audioSession.type,undefined);
+});
+
+
+test('continuous movement waits for activation and never plays while muted, hidden or paused', () => {
+  for (const mode of ['locked', 'muted', 'hidden', 'paused', 'suspended']) {
+    const s = setup({ suspended: mode === 'suspended' });
+    s.sound.setActive(true);
+    if (mode !== 'locked') s.gesture();
+    if (mode === 'muted') s.sound.setMuted(true);
+    if (mode === 'hidden') s.document.hidden = true;
+    if (mode === 'paused') s.sound.setActive(false);
+    s.sound.setMovement(190);
+    assert.equal(s.sound.movementLoop, null, mode);
+    assert.equal(s.sources.length, 0, mode);
+  }
+});
+
+test('a long walk and quick stop/start share one seamless source with smooth bounded changes', () => {
+  const s = setup(); s.gesture(); s.sound.setActive(true); s.sound.setMovement(190);
+  const loop = s.sound.movementLoop;
+  assert.equal(loop.source.loop, true); assert.equal(loop.source.buffer.length, 32000);
+  const events = loop.gain.gain.events.length;
+  for (let i = 0; i < 1200; i++) { s.sound.ctx.currentTime += 1 / 120; s.sound.setMovement(190); }
+  assert.equal(s.sources.length, 1); assert.equal(loop.gain.gain.events.length, events);
+  s.sound.setMovement(0);
+  assert.deepEqual(loop.gain.gain.events.at(-1), ['set', 0, s.sound.ctx.currentTime + .2]);
+  s.sound.ctx.currentTime += .05; s.sound.setMovement(190);
+  assert.equal(s.sound.movementLoop, loop); assert.equal(s.sources.length, 1);
+  assert.equal(loop.gain.gain.events.at(-1)[1], .56);
+  s.sound.setMovement(80, true); assert.equal(loop.level, .24); assert.ok(loop.rate < 1);
+  s.sound.setMovement(500); assert.equal(loop.level, .56); assert.equal(loop.rate, 1.12);
+  for (const speed of [NaN, Infinity, -10, 0]) { s.sound.setMovement(speed); assert.equal(loop.level, 0); }
+});
+
+test('movement loop tears down on mute, pause, interruption and background, with no stale restart', () => {
+  for (const mode of ['mute', 'pause', 'interruption', 'background']) {
+    const s = setup(); s.gesture(); s.sound.setActive(true); s.sound.setMovement(190);
+    const loop = s.sound.movementLoop, buffer = loop.source.buffer;
+    if (mode === 'mute') s.sound.setMuted(true);
+    if (mode === 'pause') s.sound.setActive(false);
+    if (mode === 'interruption') { s.sound.ctx.state = 'interrupted'; s.sound.ctx.onstatechange(); }
+    if (mode === 'background') { s.document.hidden = true; s.listeners.visibilitychange[0](); }
+    assert.equal(s.sound.movementLoop, null, mode);
+    assert.ok(loop.source.stops.at(-1) <= s.sound.ctx.currentTime + .016, mode);
+    s.sound.muted = false; s.sound.active = true; s.document.hidden = false; s.sound.ctx.state = 'running';
+    s.sound.finishUnlock(s.sound.ctx); assert.equal(s.sound.movementLoop, null);
+    s.sound.setMovement(190); const next = s.sound.movementLoop;
+    assert.notEqual(next, loop); assert.equal(next.source.buffer, buffer);
+    loop.source.onended(); assert.equal(loop.source.disconnected, true);
+    assert.equal(loop.gain.disconnected, true); assert.equal(s.sound.movementLoop, next);
+  }
+});
+
+test('movement waveform is finite, bounded and continuous across its loop seam', () => {
+  const s = setup(); s.gesture(); s.sound.setActive(true); s.sound.setMovement(190);
+  const buffer = s.sound.movementLoop.source.buffer, data = buffer.getChannelData(0);
+  assert.equal(s.sound.createMovementBuffer(), buffer);
+  let peak = 0, minRms = Infinity;
+  for (let start = 0; start < data.length; start += 800) {
+    let sum = 0;
+    for (let i = start; i < start + 800; i++) { assert.ok(Number.isFinite(data[i])); peak = Math.max(peak, Math.abs(data[i])); sum += data[i] ** 2; }
+    minRms = Math.min(minRms, Math.sqrt(sum / 800));
+  }
+  assert.ok(peak > .1 && peak < .4); assert.ok(minRms > .015);
+  assert.ok(Math.abs(data[0] - data.at(-1)) < .02);
 });

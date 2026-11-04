@@ -312,3 +312,45 @@ test('opponent windup and recovery poses connect continuously to idle',()=>{
   idle.forEach((a,i)=>{assert.ok(Math.abs(a-start[i])<.0001);assert.ok(Math.abs(a-end[i])<.0001);});
   assert.ok(windup.some((a,i)=>Math.abs(a-idle[i])>1));
 });
+
+
+test('continuous movement follows real travel in both directions, including forward jumps', () => {
+  for (const direction of ['left', 'right']) for (const mode of ['walk', 'jump', 'crouch', 'boost']) {
+    const {game} = setup(), speeds = []; game.player.x = 600;
+    game.audio.setMovement = (speed, crouching) => speeds.push({speed, crouching});
+    game.input.setKey(direction, true);
+    if (mode === 'jump') game.input.setKey('space', true);
+    if (mode === 'crouch') game.input.setKey('s', true);
+    if (mode === 'boost') game.player.speedBoost = 4;
+    advance(game, .25);
+    assert.ok(speeds.length > 20); assert.ok(speeds.every(s => s.speed > 1), direction + mode);
+    if (mode === 'jump') assert.equal(game.player.onGround, false);
+    if (mode === 'crouch') assert.ok(speeds.every(s => s.crouching));
+    game.input.setKey(direction, false); speeds.length = 0; advance(game, .1);
+    assert.ok(speeds.every(s => s.speed === 0), 'release ' + mode);
+  }
+});
+
+test('blocked movement and game transitions silence the continuous track', () => {
+  for (const mode of ['idle', 'attack', 'wall', 'blocked', 'freeze', 'broken', 'meeting', 'pause', 'down', 'floorClear', 'ending', 'loadFloor']) {
+    const {game, window} = setup(), speeds = [];
+    game.audio.setMovement = speed => speeds.push(speed); game.bossGate = game.worldWidth + 100;
+    if (!['idle', 'attack'].includes(mode)) game.input.setKey('right', true);
+    if (mode === 'attack') game.input.setKey('j', true);
+    if (mode === 'wall') game.player.x = game.worldWidth - 60;
+    if (mode === 'blocked') {
+      const enemy = new window.Enemy('hr', game.worldWidth - 52); enemy.update = () => {}; game.enemies = [enemy];
+      game.player.x = enemy.x - game.player.w - 6;
+    }
+    if (mode === 'freeze') game.freezeTimer = 10;
+    if (mode === 'broken') game.player.broken = 10;
+    if (mode === 'meeting') game.player.meetingTrap = 10;
+    if (mode === 'pause') game.state = 'paused';
+    if (mode === 'down') game.playerDown();
+    if (mode === 'floorClear') game.floorClear();
+    if (mode === 'ending') { game.floorIndex = 4; game.floorClear(); }
+    if (mode === 'loadFloor') { game.loadFloor(1, false); game.input.setKey('right', false); }
+    advance(game, .1);
+    assert.ok(speeds.length > 0, mode); assert.ok(speeds.every(speed => speed === 0), mode);
+  }
+});
