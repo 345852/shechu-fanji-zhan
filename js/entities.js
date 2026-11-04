@@ -313,6 +313,7 @@
         this.pendingHit.delay -= dt;
         if (this.pendingHit.delay <= 0) {
           const hit = this.pendingHit;
+          game.sound("swing", hit.effect.combo);
           this.pendingHit = null;
           const area = { x: this.dir > 0 ? this.x + this.w - 4 : this.x - hit.range + 4,
             y: this.y + 12, w: hit.range, h: 38 };
@@ -387,6 +388,7 @@
       this.attackDuration = 0.32;
       this.attackTimer = 0.32;
       this.parryTimer = 0.42;
+      game.sound("reflect");
       this.specialCd = 1.05;
       this.reflectProjectiles(game);
       const area = {
@@ -433,6 +435,7 @@
         reflected += 1;
       });
       if (reflected > 0) {
+        game.sound("parry");
         this.rage = clamp(this.rage + reflected * 10, 0, 100);
         game.screenShake = Math.max(game.screenShake, 6);
         game.toast(`需求反弹 ×${reflected}`);
@@ -451,6 +454,7 @@
       this.attackDuration = 0.38;
       this.attackTimer = 0.38;
       this.thrustTimer = 0.22;
+      game.sound("thrust");
       this.specialCd = 0.85;
       this.vx = this.dir * 520;
       const area = {
@@ -488,6 +492,7 @@
       this.attackDuration = 0.26;
       this.attackTimer = 0.26;
       this.ammo -= 1;
+      game.sound("ranged");
       game.projectiles.push(new Projectile({
         owner: "player",
         kind: "stapler",
@@ -511,6 +516,7 @@
       }
       this.rage = 0;
       game.freezeTimer = 3;
+      game.sound("ultimate");
       game.screenShake = 18;
       game.toast("已读不回：全场冻结 3 秒");
       game.floatText("已读不回", this.x + this.w / 2, this.y - 12, COLORS.yellow);
@@ -535,6 +541,7 @@
     takeDamage(amount, mindDamage, game, source) {
       if (this.invuln > 0 || this.dead) return;
       if (this.parryTimer > 0) {
+        game.sound("parry");
         this.rage = clamp(this.rage + 10, 0, 100);
         this.invuln = 0.4;
         game.screenShake = Math.max(game.screenShake, 5);
@@ -555,6 +562,7 @@
       game.stats.damageTaken += final;
       if (game.reduceTaskQuality) game.reduceTaskQuality(Math.max(0.6, (final + finalMind) * 0.05));
       this.health -= final;
+      game.sound("hurt");
       this.hitReaction = .18;
       this.mind -= finalMind;
       this.rage = clamp(this.rage + final * 0.7 + finalMind * 0.36, 0, 100);
@@ -628,6 +636,7 @@
     takeDamage(amount, knock, game) {
       if (this.dead) return;
       this.hp -= amount;
+      game.sound("hit", amount);
       this.hitReaction = .18;
       receiveImpact(this, knock, game);
       game.stats.hits += 1;
@@ -802,6 +811,7 @@
     takeDamage(amount, game, knock = 0) {
       if (this.dead) return;
       this.hp -= amount;
+      game.sound("hit", amount);
       this.hitReaction = .18;
       this.flash = 0.12;
       receiveImpact(this, knock, game, 0.65);

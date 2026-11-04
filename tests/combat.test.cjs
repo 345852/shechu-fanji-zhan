@@ -11,12 +11,38 @@ function setup() {
   const window={document,devicePixelRatio:2,matchMedia:()=>({matches:false}),addEventListener:(name,cb)=>{(listeners[name] ||= []).push(cb);}};
   const sandbox={window,document,performance:{now:()=>1000},requestAnimationFrame:()=>{},Math,console};
   vm.createContext(sandbox);
-  for(const file of ['data','input','renderer','entities','game'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+file+'.js'),'utf8'),sandbox,{filename:file+'.js'});
+  for(const file of ['data','audio','input','renderer','entities','game'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+file+'.js'),'utf8'),sandbox,{filename:file+'.js'});
   const game = new window.BossRushGame(canvas);
   game.startGame();game.enemies=[];game.pickups=[];game.level={...game.level,hazards:[]};
   return {game,window,canvas,ctx,listeners,document,docListeners};
 }
 function advance(game,seconds,hz=120){for(let i=0;i<Math.round(seconds*hz);i++){game.update(1/hz);game.input.afterFrame();}}
+test('opening sound plays on a new run, never on resume or a floor transition',()=>{
+  const {game}=setup();const sounds=[];game.audio.play=name=>sounds.push(name);
+  game.startGame();assert.deepEqual(sounds,['start']);
+  game.enemies=[];game.state='paused';game.input.setKey('enter',true);advance(game,1/120);
+  game.input.setKey('enter',false);game.loadFloor(1,false);assert.deepEqual(sounds,['start']);
+  game.restartAfterEnding();assert.deepEqual(sounds,['start','start']);
+});
+test('combat sounds follow actual swings and successful skills, including projectile impacts',()=>{
+  const {game,window}=setup();const sounds=[];game.sound=(name,variation)=>sounds.push([name,variation]);
+  game.input.setKey('j',true);advance(game,1);game.input.setKey('j',false);
+  assert.deepEqual(sounds.filter(s=>s[0]==='swing').map(s=>s[1]),[1,2,3]);
+  advance(game,.5);const p=game.player;
+  p.demandReflect(game);p.demandReflect(game);assert.equal(sounds.filter(s=>s[0]==='reflect').length,1);
+  advance(game,1.2);p.resignationThrust(game);p.resignationThrust(game);assert.equal(sounds.filter(s=>s[0]==='thrust').length,1);
+  advance(game,.5);p.ammo=0;p.throwStapler(game);assert.equal(sounds.filter(s=>s[0]==='ranged').length,0);
+  p.ammo=2;p.throwStapler(game);p.throwStapler(game);assert.equal(sounds.filter(s=>s[0]==='ranged').length,1);
+  const projectile=game.projectiles[0];game.enemies=[new window.Enemy('hr',projectile.x+2)];advance(game,1/120);
+  assert.equal(sounds.filter(s=>s[0]==='hit').length,1);
+  p.rage=0;p.ultimate(game);assert.equal(sounds.filter(s=>s[0]==='ultimate').length,0);
+  p.rage=100;p.ultimate(game);p.ultimate(game);assert.equal(sounds.filter(s=>s[0]==='ultimate').length,1);
+});
+test('keyboard activation of sound controls never starts or pauses the game',()=>{
+  const {game,listeners}=setup();
+  listeners.keydown.forEach(fn=>fn({key:'Enter',target:{closest:()=>({})},preventDefault(){}}));
+  assert.equal(game.input.consume('enter'),false);
+});
 test('attacks never freeze locomotion or effects',()=>{
   const {game}=setup();const start=game.player.x;
   game.input.setKey('right',true);game.input.setKey('j',true);

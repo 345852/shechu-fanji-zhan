@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#101922">
 <meta name="description" content="从工位一路打到顶楼。一场属于打工人的办公室反击战。">
 <title>社畜反击战 · 今天，准点下班</title>
-<link rel="stylesheet" href="style.css?v=21a6280290c3">
+<link rel="stylesheet" href="style.css?v=fbb8e217dfd0">
 </head>
 <body>
 <main class="shell">
@@ -18,9 +18,9 @@
   </aside>
   <section class="cabinet" data-state="title" aria-label="社畜反击战游戏机">
     <div class="screen-wrap"><canvas id="game" width="430" height="760" aria-label="社畜反击战游戏画面">使用键盘或下方触屏按钮操作游戏。</canvas></div>
-    <div class="title-menu"><button class="start-adventure" type="button" data-press="enter"><span>开始反击</span><span aria-hidden="true">↗</span></button><p>按 ENTER 开始 <span>·</span> 支持键盘与触屏</p><div class="title-tags"><span>✦ 5 层闯关</span><span>⌁ 自由连招</span><span>↗ 高质量交付</span></div></div>
+    <div class="title-menu"><button class="start-adventure" type="button" data-press="enter"><span>开始反击</span><span aria-hidden="true">↗</span></button><div class="title-options"><p>按 ENTER 开始 <span>·</span> 支持触屏</p><button class="sound-toggle" type="button" data-sound-toggle aria-label="游戏音效" aria-pressed="true" title="关闭游戏音效"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="sound-waves" d="M16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="sound-off" d="m17 9 5 6m0-6-5 6"/></svg><span>音效开</span></button></div><div class="title-tags"><span>✦ 5 层闯关</span><span>⌁ 自由连招</span><span>↗ 高质量交付</span></div></div>
     <div class="touch-controls" aria-label="触屏操作区">
-      <div class="control-top"><span class="control-status">自由移动 · 长按普攻连击</span><button class="touch-btn perk-btn" type="button" data-press="v" data-charge="3次" aria-label="领取特权补给">✦ 补给 <small>V</small></button></div>
+      <div class="control-top"><span class="control-status">长按普攻连击</span><div class="control-options"><button class="sound-toggle" type="button" data-sound-toggle aria-label="游戏音效" aria-pressed="true" title="关闭游戏音效"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="sound-waves" d="M16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="sound-off" d="m17 9 5 6m0-6-5 6"/></svg><span>音效开</span></button><button class="touch-btn perk-btn" type="button" data-press="v" data-charge="3次" aria-label="领取特权补给">✦ 补给 <small>V</small></button></div></div>
       <div class="move-pad" aria-label="移动操作">
         <button class="touch-btn move jump" type="button" data-press="space" aria-label="跳跃"><b>↑</b><small>跳跃</small></button>
         <button class="touch-btn move left" type="button" data-press="left" aria-label="向左移动"><b>←</b></button>
@@ -40,9 +40,10 @@
   <aside class="floor-guide" aria-label="闯关路线"><p class="eyebrow">THE WAY OUT</p><h2>向上闯。<br>准点走。</h2><ol reversed><li><span>05</span><div>顶楼 CEO 室<small>资本之神</small></div></li><li><span>04</span><div>总监楼层<small>画饼大师</small></div></li><li><span>03</span><div>经理办公室<small>甩锅侠</small></div></li><li><span>02</span><div>会议室<small>会霸</small></div></li><li class="active"><span>01</span><div>开放工位区<small>从这里开始 ↗</small></div></li></ol><p class="route-note">收集资料，推进事项。<br>每一次反击，都离下班更近。</p></aside>
 </main>
 <script src="js/data.js?v=030b18d8a5bb"></script>
-<script src="js/input.js?v=7d2fb072da55"></script>
+<script src="js/audio.js?v=f39a4dc7ba56"></script>
+<script src="js/input.js?v=59866eecc00e"></script>
 <script src="js/renderer.js?v=ca72047b3a39"></script>
-<script src="js/entities.js?v=97ae68d114ae"></script>
-<script src="js/game.js?v=bfdbe77efe31"></script>
+<script src="js/entities.js?v=9c38562ca109"></script>
+<script src="js/game.js?v=5eeed8b475ab"></script>
 <script src="js/main.js?v=e9c03334b233"></script>
 </body></html>

@@ -268,6 +268,70 @@ canvas {
   color:#637c80
 }
 
+.title-options,.control-options {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px
+}
+
+.title-options {
+  margin:12px 0
+}
+
+.title-options p {
+  margin:0;
+  text-align:left
+}
+
+.sound-toggle {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  min-height:36px;
+  padding:6px 8px;
+  flex-shrink:0;
+  border:1px solid #526e74;
+  border-radius:7px;
+  background:#203b45;
+  color:#b0eee3;
+  font-size:clamp(10px,2.5cqw,12px);
+  white-space:nowrap
+}
+
+.sound-toggle svg {
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round
+}
+
+.sound-toggle .sound-off,.sound-toggle.is-muted .sound-waves {
+  display:none
+}
+
+.sound-toggle.is-muted .sound-off {
+  display:block
+}
+
+.sound-toggle.is-muted {
+  color:#a1b2b6;
+  background:#22303a
+}
+
+.sound-toggle:hover {
+  filter:brightness(1.15)
+}
+
+.control-options {
+  margin-left:auto;
+  gap:6px
+}
+
 .title-tags {
   display:flex;
   justify-content:space-between;

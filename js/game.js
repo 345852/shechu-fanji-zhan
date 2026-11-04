@@ -19,6 +19,7 @@
         this.last = performance.now();
         if (document.hidden && this.state === 'playing') this.state = 'paused';
       });
+      this.audio = new window.GameAudio();
       this.input = new window.Input();
       this.player = new window.Player();
       this.state = "title";
@@ -117,6 +118,9 @@
       this.floorIndex = 0;
       this.player = new window.Player();
       this.loadFloor(0, true);
+      this.audio.stop();
+      this.audio.setActive(true);
+      this.sound("start");
     }
 
     restartAfterEnding() {
@@ -325,7 +329,12 @@
       this.hitCheers = this.hitCheers.filter((item) => item.life > 0);
     }
 
+    sound(name, variation) {
+      this.audio.play(name, variation);
+    }
+
     syncTouchUi() {
+      this.audio.setActive(this.state !== "title" && this.state !== "paused" && !document.hidden);
       const ratio = clamp(this.player.rage / 100, 0, 1);
       const ready = ratio >= 1 && this.state === 'playing' && this.freezeTimer <= 0;
       const uses = this.task.adUsesLeft;

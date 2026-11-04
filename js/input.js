@@ -7,7 +7,7 @@
       this.dashDir = 0;
 
       window.addEventListener("keydown", (event) => {
-        if (event.target.closest && event.target.closest('button[data-press]') && (event.key === 'Enter' || event.key === ' ')) return;
+        if (event.target.closest && event.target.closest('button') && (event.key === 'Enter' || event.key === ' ')) return;
         const key = this.normalize(event.key);
         if (!key) return;
         if (["left", "right", "up", "space", "s", "j", "k", "l", "v", "q", "e", "1", "2", "3", "enter", "p"].includes(key)) {
