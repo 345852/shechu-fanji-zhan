@@ -160,10 +160,10 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
 
   function paintButton(c, b) {
     const art = window.GameArt, pressed = Array.from(touches.values()).some(t => t.button.id === b.id);
-    const y = b.y + (pressed ? 3 : 0), fill = b.primary ? '#ffc278' : '#314c59';
+    const y = b.y, fill = b.primary ? (pressed ? '#efad69' : '#ffc278') : (pressed ? '#263e4a' : '#314c59');
     c.save(); if (b.disabled) c.globalAlpha = .42;
-    art.rr(c, b.x, b.y + 4, b.w, b.h, 10, b.primary ? '#88562e' : '#0a202b', '#52717a');
-    const gradient = c.createLinearGradient(0, y, 0, y + b.h); gradient.addColorStop(0, fill); gradient.addColorStop(1, b.primary ? '#f7ab64' : '#233b48');
+    // One button surface; the previous offset, outlined base looked like a duplicate control.
+    const gradient = c.createLinearGradient(0, y, 0, y + b.h); gradient.addColorStop(0, fill); gradient.addColorStop(1, b.primary ? (pressed ? '#e99b54' : '#f7ab64') : (pressed ? '#1c313c' : '#233b48'));
     art.rr(c, b.x, y, b.w, b.h, 10, gradient, b.primary ? '#ffe5b0' : '#678189');
     art.text(c, b.label, b.x + b.w / 2, y + b.h / 2 + (b.sub ? -1 : 5), b.id === 'start' ? 23 : b.w > 80 ? 12 : 16, b.primary ? '#3b2d23' : '#d9ede6', 700, 'center');
     if (b.sub) art.text(c, b.sub, b.x + b.w / 2, y + b.h - 9, 9, b.primary ? '#6f4d30' : '#9bbdb8', 500, 'center');
