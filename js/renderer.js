@@ -304,9 +304,58 @@
   function callout(c,g){const v=g.callout;c.save();c.globalAlpha=Math.min(1,v.life*4);text(c,v.text,215,278,13,C.orange,700,'center');c.restore();}
   function floating(c,v){c.save();c.globalAlpha=clamp(v.life/v.maxLife);text(c,v.text,v.x,v.y,12,v.color,750,'center');c.restore();}
   function cheer(c,v){if(!/下线|过关|资料/.test(v.text))return;c.save();c.globalAlpha=clamp(v.life/v.maxLife);text(c,v.text,v.x,v.y-20,14,C.orange,800,'center');c.restore();}
-  function bossHp(c,g){if(!g.boss)return;rr(c,24,144,382,47,9,'#342c35ed','#997d73');text(c,g.boss.name,37,162,11,'#f4d5ba',700);text(c,`P${g.boss.phase}`,392,162,10,'#d4a78b',600,'right');gauge(c,37,173,355,6,g.boss.hp/g.boss.maxHp,'#e6a08d');}
+  function finaleArena(c,g) {
+    const b=g.boss,f=b.finale,a=b.level.finale,left=a.arenaLeft,right=a.arenaRight,top=GROUND-230;
+    c.save();
+    line(c,[[left,GROUND+6],[right,GROUND+6]],'#bc777b',2);
+    const lane=f.mode==='laneWarning'||f.mode==='laneStrike';
+    const sweep=f.mode==='sweepWarning'||f.mode==='sweepStrike';
+    const live=f.mode.endsWith('Strike');
+    if(lane){
+      const alpha=live?'b0':'28';
+      rr(c,left,top,f.safeX-left,GROUND-top,0,'#e3747e'+alpha);
+      rr(c,f.safeX+f.safeWidth,top,right-f.safeX-f.safeWidth,GROUND-top,0,'#e3747e'+alpha);
+      rr(c,f.safeX,top,f.safeWidth,GROUND-top,7,'#91dfd41c','#91dfd4');
+      rr(c,f.safeX,GROUND-7,f.safeWidth,10,3,'#91dfd4');
+      text(c,'安全区',f.safeX+f.safeWidth/2,top+27,13,C.cyan,800,'center');
+      text(c,f.side===0?'← 急转':'急转 →',f.safeX+f.safeWidth/2,top+49,12,C.cream,700,'center');
+      for(let x=left+10;x<right;x+=30){
+        if(x>f.safeX-8&&x<f.safeX+f.safeWidth+8)continue;
+        line(c,[[x,GROUND-8],[x+10,GROUND-24]],live?'#ffe2ce':'#d58a87',2);
+      }
+    } else if(sweep){
+      rr(c,left,GROUND-42,right-left,42,3,live?'#ffbf78c0':'#ffbf7840','#ffbf78');
+      text(c,'↑',left+65,GROUND-62,32,C.orange,800,'center');
+      text(c,'跳过横扫',left+65,GROUND-46,10,C.cream,700,'center');
+    }
+    if(f.mode!=='recovery'){
+      ellipse(c,b.x+b.w/2,b.y+b.h/2,57,70,'#91dfd412');
+      c.strokeStyle='#91dfd4aa';c.lineWidth=2;c.beginPath();c.ellipse(b.x+b.w/2,b.y+b.h/2,57,70,0,0,Math.PI*2);c.stroke();
+    }else{
+      glow(c,b.x+b.w/2,GROUND-42,85,'#ffbd7628');
+      text(c,'破盾 ×1.5',b.x+b.w/2,b.y-22,12,C.orange,800,'center');
+    }
+    c.restore();
+  }
+  function bossHp(c,g){
+    if(!g.boss)return;
+    const b=g.boss,f=b.finale;
+    rr(c,24,144,382,f?67:47,9,'#342c35ed','#997d73');
+    text(c,b.name,37,162,11,'#f4d5ba',700);
+    text(c,`P${b.phase}`+(f?(f.mode==='recovery'?' · 破盾':' · 护盾'):''),392,162,10,'#d4a78b',600,'right');
+    gauge(c,37,173,355,6,b.hp/b.maxHp,'#e6a08d');
+    if(f){
+      let label='极限验收 · 左右急转 → 跳跃 → 反击';
+      if(f.mode==='laneWarning'||f.mode==='laneStrike')label=(f.side===0?'← 左侧安全区':'右侧安全区 →')+`  ${f.strike+1}/${f.rules.turns}`;
+      if(f.mode==='sweepWarning'||f.mode==='sweepStrike')label='↑ 跳过地面横扫';
+      if(f.mode==='recovery')label='护盾已破 · 冲上去反击！';
+      const color=f.mode==='recovery'?C.orange:C.cyan;
+      text(c,label,37,196,11,color,700);text(c,f.timer.toFixed(1)+'s',392,196,10,C.cream,600,'right');
+      gauge(c,37,202,355,2,1-f.timer/f.duration,color);
+    }
+  }
   function overlay(c,title,sub){c.fillStyle='#0c2026b8';c.fillRect(0,0,W,H);rr(c,35,272,360,145,18,'#243e49','#73928b');text(c,title,215,330,27,C.orange,800,'center');text(c,sub,215,364,13,'#c2d2c7',500,'center');}
   function ending(c,g){c.fillStyle='#102935f2';c.fillRect(0,0,W,H);text(c,'DELIVERY COMPLETE',215,58,10,C.cyan,600,'center');text(c,'今天，准点下班。',215,101,29,C.orange,800,'center');character(c,{x:198,y:214,w:34,h:58,dir:1,animTime:g.time},{x:0,y:0},{scale:1.9,portrait:true});const score=g.settlementScore();pill(c,`${g.settlementGrade(score)} 级交付 · ${score} 分`,145,297,C.orange);const rows=[['通关用时',g.elapsedSeconds()+' 秒'],['交付质量',Math.round(g.task.quality)+'%'],['验收通过',g.stats.bosses+' / 5'],['处理阻碍',g.stats.defeated+' 个'],['本局称号',g.title()]];rows.forEach(([label,value],i)=>{text(c,label,51,355+i*35,12,'#a5bfba');text(c,value,379,355+i*35,13,'#ede7ce',650,'right');line(c,[[50,367+i*35],[380,367+i*35]],'#3a545d',.7);});text(c,'按 ENTER 再来一轮',215,554,12,C.cyan,600,'center');}
   function ultimate(c,g){const t=1-g.freezeTimer/3;c.save();c.globalAlpha=.25*(1-t);glow(c,g.player.x-g.camera.x,GROUND-35,150+300*t,'#ffe4a180');c.restore();pill(c,'✦ 已读不回 · '+g.freezeTimer.toFixed(1)+'s',132,302,C.orange);}
-  window.GameArt={rr,text,character,city,office,desk,title,hud,slash,pickup,projectile,particle,vitals,enemy,toast,callout,floating,cheer,bossHp,overlay,ending,ultimate};
+  window.GameArt={rr,text,character,city,office,desk,title,hud,slash,pickup,projectile,particle,vitals,enemy,finaleArena,toast,callout,floating,cheer,bossHp,overlay,ending,ultimate};
 }());

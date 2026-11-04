@@ -143,7 +143,16 @@
       pickupProgress: 10,
       theme: { sky: "#18080d", back: "#50202a", floor: "#3f2f39", neon: "#dc2626" },
       bossColor: "#dc2626",
-      bossHp: 330,
+      bossHp: 560,
+      finale: {
+        arenaLeft: 1424, arenaRight: 1820, bossX: 1748,
+        laneCenters: [1485, 1655], shieldScale: 0.08, exposedScale: 1.5,
+        stages: [
+          { turns: 2, warning: 1.28, safeWidth: 120, recovery: 3.2 },
+          { turns: 3, warning: 1.18, safeWidth: 112, recovery: 3.0 },
+          { turns: 4, warning: 1.08, safeWidth: 104, recovery: 2.8 }
+        ]
+      },
       bossAttacks: ["scythe", "shockwave", "layoffStorm"],
       hazards: [
         { type: "laser", x: 360, y: 200, w: 270, period: 1.8, offset: 0.2 },

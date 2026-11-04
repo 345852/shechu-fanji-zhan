@@ -287,8 +287,8 @@ test('enemy strikes respect freeze, pause, lethal interruption and the player pa
     if(mode==='parry')assert.ok(p.rage>=10);
   }
 });
-test('all five bosses answer nearby and surviving hits without moving into the player',()=>{
-  for(let floor=0;floor<5;floor++){
+test('first four bosses answer nearby and surviving hits without moving into the player',()=>{
+  for(let floor=0;floor<4;floor++){
     const {game,window}=setup();game.loadFloor(floor,false);game.enemies=[];game.pickups=[];game.level={...game.level,hazards:[]};
     const p=game.player;p.x=1500;p.invuln=0;game.phase='boss';
     const boss=new window.Boss(game.level,floor);boss.x=p.x+p.w+6;boss.attackCd=0;game.boss=boss;
@@ -353,4 +353,122 @@ test('blocked movement and game transitions silence the continuous track', () =>
     advance(game, .1);
     assert.ok(speeds.length > 0, mode); assert.ok(speeds.every(speed => speed === 0), mode);
   }
+});
+
+function finalArena(phase = 1) {
+  const s = setup(), g = s.game;
+  g.loadFloor(4, true); g.task.progress = 100; g.player.x = 1470;
+  g.enterBoss(); g.pickups = []; g.player.invuln = 0;
+  g.boss.hp = g.boss.maxHp * [1, .6, .3][phase - 1];
+  g.boss.beginFinaleCycle(g);
+  return s;
+}
+function steerFinale(g, fight = false) {
+  const p = g.player, f = g.boss.finale;
+  let target = p.x + p.w / 2, attack = false;
+  if (f.mode === 'laneWarning' || f.mode === 'laneStrike') target = f.safeX + f.safeWidth / 2;
+  if (f.mode === 'recovery' && fight) { target = g.boss.x - 35; attack = g.boss.x - (p.x + p.w) < 65; }
+  const dx = target - (p.x + p.w / 2);
+  g.input.setKey('right', dx > 19); g.input.setKey('left', dx < -19);
+  g.input.setKey('space', f.mode === 'sweepWarning' && f.timer < .25 && p.onGround);
+  g.input.setKey('j', attack);
+}
+test('final encounter alternates safe sides, then sweeps and exposes across all three phases', () => {
+  for (let phase = 1; phase <= 3; phase++) {
+    const {game:g} = finalArena(phase), f = g.boss.finale, sides = [], modes = [];
+    let prev = '';
+    for(let i=0;i<1800 && !modes.includes('recovery');i++) {
+      const mode = f.mode + ':' + f.strike;
+      if(mode !== prev) { prev = mode; modes.push(f.mode); if(f.mode === 'laneWarning') sides.push(f.side); }
+      steerFinale(g); advance(g, 1/120);
+    }
+    assert.equal(sides.length, phase+1);
+    sides.slice(1).forEach((side,i)=>assert.notEqual(side,sides[i]));
+    assert.ok(modes.includes('sweepWarning')); assert.ok(modes.includes('sweepStrike')); assert.ok(modes.includes('recovery'));
+    assert.equal(g.stats.damageTaken,0,`phase ${phase}: actual movement and timed jump can evade the entire chain`);
+    assert.equal(g.boss.phase,phase);
+  }
+});
+test('safe-zone warning does not hurt; the strike checks full body even while jumping', () => {
+  const {game:g} = finalArena(), f=g.boss.finale;
+  g.player.x=1620;g.player.y=350;g.player.vy=0;g.player.invuln=0;
+  g.boss.update(.5,g);assert.equal(g.player.health,130);
+  g.boss.update(f.timer,g);assert.ok(g.player.health<130);
+  const health=g.player.health;g.player.invuln=0;g.boss.update(.1,g);assert.equal(g.player.health,health,'one hit per pulse');
+  const {game:safe}=finalArena();safe.player.x=safe.boss.finale.safeX+30;
+  safe.boss.update(safe.boss.finale.timer,safe);assert.equal(safe.player.health,130);
+});
+test('the floor sweep hits standing players and can be jumped or parried',()=>{
+  for(const action of ['stand','jump','parry']) {
+    const {game:g}=finalArena();g.boss.setFinaleMode('sweepWarning',.25,g);
+    if(action==='jump')g.input.setKey('space',true);
+    if(action==='parry')g.player.parryTimer=1;
+    advance(g,.3);
+    assert.equal(g.player.health===130,action!=='stand',action);
+  }
+});
+test('shield resists damage without cancelling telegraphs; exposed hits reward timing',()=>{
+  const {game:g}=finalArena(),b=g.boss,f=b.finale;
+  const timer=f.timer,x=b.x;const hp=b.hp;
+  g.damageBoss(100,300);assert.equal(hp-b.hp,8);assert.equal(f.timer,timer);assert.equal(b.x,x);
+  g.boss.setFinaleMode('recovery',3,g);const exposedHp=b.hp;
+  g.damageBoss(100,300);assert.equal(exposedHp-b.hp,150);assert.equal(f.mode,'recovery');
+  assert.equal(b.x,x);assert.equal(f.timer,3);
+});
+test('final difficulty advances on the next chain, never halfway through a warning',()=>{
+  const {game:g}=finalArena(),b=g.boss,f=b.finale;const duration=f.duration;
+  b.hp=b.maxHp*.3;advance(g,.1);assert.equal(b.phase,1);assert.equal(f.duration,duration);
+  b.beginFinaleCycle(g);assert.equal(b.phase,3);assert.equal(f.rules.turns,4);
+});
+test('pause and ultimate freeze halt final telegraphs and do not queue hidden hits',()=>{
+  for(const mode of ['pause','freeze']) {
+    const {game:g}=finalArena(),f=g.boss.finale;const timer=f.timer;
+    if(mode==='pause')g.state='paused';else g.freezeTimer=3;
+    advance(g,1);assert.equal(f.timer,timer);assert.equal(g.player.health,130);
+    g.state='playing';g.freezeTimer=0;advance(g,.1);assert.ok(f.timer<timer);
+  }
+});
+test('camping and holding one direction cannot bypass the final arena',()=>{
+  for(const key of [null,'left','right','j']) {
+    const {game:g}=finalArena(3);if(key)g.input.setKey(key,true);
+    advance(g,7);assert.ok(g.stats.damageTaken>25,String(key));
+    assert.ok(g.player.x>=g.level.finale.arenaLeft);assert.ok(g.player.x<=g.level.finale.arenaRight-g.player.w);
+    assert.notEqual(g.state,'ending');
+  }
+});
+test('final boss defeat clears only once, and death retries the arena with full health',()=>{
+  const {game:g}=finalArena(3);g.player.health=0;advance(g,.02);assert.equal(g.state,'down');
+  advance(g,2.3);assert.equal(g.state,'playing');assert.equal(g.phase,'boss');assert.equal(g.boss.finale.mode,'intro');
+  assert.equal(g.player.health,130);assert.equal(g.player.mind,120);assert.equal(g.boss.hp,g.boss.maxHp);
+  assert.equal(g.enemies.length,0);assert.equal(g.projectiles.length,0);assert.equal(g.stats.deaths,1);
+  g.boss.setFinaleMode('recovery',3,g);g.damageBoss(10000);g.damageBoss(10000);
+  assert.equal(g.state,'ending');assert.equal(g.stats.bosses,1);assert.equal(g.stats.cleared,true);
+});
+test('timed direction changes, jump and normal attacks can win the complete final encounter',()=>{
+  for(const hz of [30,60,120]) {
+    const {game:g}=finalArena();g.last=1000;
+    for(let i=1;i<=hz*100 && g.state==='playing';i++) {steerFinale(g,true);g.loop(1000+i*1000/hz);}
+    assert.equal(g.state,'ending',`${hz} Hz: hp ${g.boss.hp.toFixed(1)}, damage ${g.stats.damageTaken.toFixed(1)}`);
+    assert.equal(g.stats.deaths,0);assert.ok(g.stats.damageTaken<30);assert.equal(g.boss.phase,3);
+  }
+});
+test('final hazard telegraphs and recovery HUD render in every phase',()=>{
+  const {game:g}=finalArena();
+  for(let phase=1;phase<=3;phase++) {
+    g.boss.hp=g.boss.maxHp*[1,.6,.3][phase-1];g.boss.beginFinaleCycle(g);
+    for(const mode of ['intro','laneWarning','laneStrike','sweepWarning','sweepStrike','recovery']) {
+      g.boss.setFinaleMode(mode,1,g);g.draw();
+    }
+  }
+});
+
+test('final phase leaves reaction time for a delayed change of direction',()=>{
+  const {game:g}=finalArena(3);const f=g.boss.finale;
+  for(let i=0;i<1500 && f.mode!=='recovery';i++) {
+    if(f.mode==='laneWarning' && f.duration-f.timer<.18) {
+      g.input.setKey('left',false);g.input.setKey('right',false);
+    }else steerFinale(g);
+    advance(g,1/120);
+  }
+  assert.equal(f.mode,'recovery');assert.equal(g.stats.damageTaken,0);
 });

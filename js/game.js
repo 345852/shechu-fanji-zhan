@@ -128,7 +128,7 @@
       this.toast("新一轮事项开始");
     }
 
-    loadFloor(index, first) {
+    loadFloor(index, first, retryBoss = false) {
       this.audio.setMovement(0);
       this.floorIndex = index;
       this.level = LEVELS[index];
@@ -159,10 +159,30 @@
       }
       this.syncCameraToPlayer();
       this.toast(`${this.level.floor} ${this.level.taskName}`);
+      if (retryBoss && this.level.finale) {
+        this.player.health = this.player.maxHealth;
+        this.player.mind = this.player.maxMind;
+        this.player.x = 1470;
+        this.enterBoss();
+        this.syncCameraToPlayer();
+      }
+    }
+
+    enterBoss() {
+      this.phase = "boss";
+      this.worldWidth = 1840;
+      this.boss = new window.Boss(this.level, this.floorIndex);
+      this.player.x = Math.min(this.player.x, 1470);
+      if (this.level.finale) {
+        this.enemies = [];
+        this.projectiles = [];
+        this.toast("最终试炼：左右急转 → 跳跃 → 破盾反击");
+      } else this.toast(`${this.level.bossName} 开始验收`);
     }
 
     syncCameraToPlayer() {
-      const target = clamp(this.player.x + this.player.w / 2 - W * 0.4, 0, this.worldWidth - W);
+      const target = this.phase === "boss" && this.level.finale ? this.worldWidth - W
+        : clamp(this.player.x + this.player.w / 2 - W * 0.4, 0, this.worldWidth - W);
       const dt = arguments[0];
       this.camera.x = dt === undefined ? target : this.camera.x + (target - this.camera.x) * (1 - Math.exp(-10 * dt));
       this.camera.y = 0;
@@ -382,9 +402,9 @@
         }
       });
       if (this.boss && !this.boss.dead && rects(area, this.boss.hitbox)) {
-        this.damageBoss(damage, knock);
+        const dealt = this.damageBoss(damage, knock);
         if (feedback) {
-          this.floatText(feedback.label || `-${Math.round(damage)}`, this.boss.x + this.boss.w / 2, this.boss.y - 10, feedback.color || COLORS.yellow);
+          this.floatText(this.boss.finale ? `-${Math.round(dealt)}` : (feedback.label || `-${Math.round(damage)}`), this.boss.x + this.boss.w / 2, this.boss.y - 10, feedback.color || COLORS.yellow);
         }
         hit = true;
       }
@@ -396,7 +416,7 @@
 
     damageBoss(damage, knock = 0) {
       if (!this.boss || this.boss.dead) return;
-      this.boss.takeDamage(damage, this, knock);
+      return this.boss.takeDamage(damage, this, knock);
     }
 
     update(dt) {
@@ -430,7 +450,7 @@
 
       if (this.state === "down") {
         this.stateTimer -= dt;
-        if (this.stateTimer <= 0) this.loadFloor(this.floorIndex, false);
+        if (this.stateTimer <= 0) this.loadFloor(this.floorIndex, false, this.phase === "boss" && !!this.level.finale);
         return;
       }
 
@@ -513,6 +533,9 @@
       this.pickups.forEach(pickup => { pickup.animTime = this.time; });
       this.player.update(dt, this);
       if (this.state !== 'playing') return;
+      if (this.phase === "boss" && this.level.finale) {
+        this.player.x = clamp(this.player.x, this.level.finale.arenaLeft, this.level.finale.arenaRight - this.player.w);
+      }
       this.resolveCharacterCollisions(previous);
       this.applyHazards(dt);
       this.updatePickups();
@@ -531,11 +554,7 @@
             this.gateToastTimer = 1.45;
           }
         } else {
-          this.phase = "boss";
-          this.worldWidth = 1840;
-          this.boss = new window.Boss(this.level, this.floorIndex);
-          this.player.x = Math.min(this.player.x, 1470);
-          this.toast(`${this.level.bossName} 开始验收`);
+          this.enterBoss();
         }
       }
 
@@ -681,6 +700,7 @@
       const worldSpace = { x: 0, y: 0 };
       this.drawOffice(ctx);
       this.drawHazards(ctx);
+      if (this.boss && this.boss.finale) window.GameArt.finaleArena(ctx, this);
       this.pickups.forEach((pickup) => pickup.draw(ctx, worldSpace));
       this.enemies.forEach((enemy) => enemy.draw(ctx, worldSpace));
       if (this.boss) this.boss.draw(ctx, worldSpace);

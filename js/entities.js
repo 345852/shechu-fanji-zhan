@@ -615,6 +615,7 @@
 
     damageCaption(source) {
       return {
+        audit: "极限验收：看准安全区再急转",
         laser: "KPI 激光命中",
         minion: "同事背刺：血压上来了",
         rush: "内卷冲撞：人麻了",
@@ -774,6 +775,10 @@
       this.walkCycle = 0;
       this.actionText = "";
       this.actionTimer = 0;
+      if (level.finale) {
+        this.x = level.finale.bossX;
+        this.finale = { mode: "intro", timer: 2.6, duration: 2.6, strike: 0, cycle: 0, side: 0 };
+      }
     }
 
     get hitbox() {
@@ -785,6 +790,7 @@
       this.animTime += dt;
       this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
       if (game.freezeTimer > 0) return;
+      if (this.finale) { this.updateFinale(dt, game); return; }
       this.attackCd = Math.max(0, this.attackCd - dt);
       if (updateHitStun(this, dt, game)) return;
       this.counterQueued = Math.max(0, (this.counterQueued || 0) - dt);
@@ -819,6 +825,7 @@
     }
 
     performAttack(game) {
+      if (this.finale) { this.beginFinaleCycle(game); return; }
       const attacks = this.level.bossAttacks;
       let attack = attacks[Math.floor(Math.random() * attacks.length)];
       if (this.floorIndex === 4) {
@@ -902,6 +909,71 @@
       }
     }
 
+    setFinaleMode(mode, duration, game) {
+      const f = this.finale;
+      f.mode = mode; f.timer = duration; f.duration = duration; f.hit = false;
+      this.attackKind = "special";
+      this.attackDuration = duration;
+      this.attackTimer = mode === "recovery" ? 0 : duration;
+      this.attackPhase = mode.endsWith("Warning") ? "windup" : "idle";
+      if (mode.endsWith("Warning")) game.sound("enemyReady", this.phase > 1 ? 2 : 1);
+      if (mode === "laneStrike" || mode === "sweepStrike") {
+        game.sound("enemySwing", 2);
+        game.screenShake = Math.max(game.screenShake, 5);
+      }
+      if (mode === "recovery") {
+        game.sound("reflect");
+        game.burst(this.x + this.w / 2, this.y + 40, "#91dfd4", 16);
+        game.toast("护盾击穿！靠近反击，伤害 ×1.5");
+      }
+    }
+
+    beginFinaleCycle(game) {
+      const f = this.finale, config = this.level.finale;
+      const hp = this.hp / this.maxHp;
+      this.phase = hp <= 0.34 ? 3 : hp <= 0.67 ? 2 : 1;
+      f.rules = config.stages[this.phase - 1];
+      f.cycle += 1; f.strike = 0;
+      // First shelter is the nearer one. Following strikes alternate: no random traps at walls.
+      f.side = center(game.player).x < (config.laneCenters[0] + config.laneCenters[1]) / 2 ? 0 : 1;
+      this.warnFinaleLane(game, true);
+    }
+
+    warnFinaleLane(game, first = false) {
+      const f = this.finale, config = this.level.finale;
+      f.safeWidth = f.rules.safeWidth;
+      f.safeX = config.laneCenters[f.side] - f.safeWidth / 2;
+      // Extra time for the first reposition after the damage window.
+      this.setFinaleMode("laneWarning", f.rules.warning + (first ? 0.45 : 0), game);
+    }
+
+    updateFinale(dt, game) {
+      const f = this.finale;
+      this.vx = 0; // Shielded casts never drive the boss through the player's body.
+      this.hitStun = Math.max(0, this.hitStun - dt);
+      this.flash = Math.max(0, this.flash - dt);
+      this.dir = center(game.player).x < center(this).x ? -1 : 1;
+      f.timer = Math.max(0, f.timer - dt);
+      this.attackTimer = f.mode === "recovery" ? 0 : f.timer;
+      if (f.timer === 0) {
+        if (f.mode === "intro" || f.mode === "recovery") this.beginFinaleCycle(game);
+        else if (f.mode === "laneWarning") this.setFinaleMode("laneStrike", 0.18, game);
+        else if (f.mode === "laneStrike") {
+          f.strike += 1;
+          if (f.strike < f.rules.turns) { f.side = 1 - f.side; this.warnFinaleLane(game); }
+          else this.setFinaleMode("sweepWarning", 0.88, game);
+        } else if (f.mode === "sweepWarning") this.setFinaleMode("sweepStrike", 0.22, game);
+        else if (f.mode === "sweepStrike") this.setFinaleMode("recovery", f.rules.recovery, game);
+      }
+      const box = game.player.hitbox;
+      const outsideShelter = box.x < f.safeX || box.x + box.w > f.safeX + f.safeWidth;
+      const inSweep = box.y + box.h > GROUND - 42 && box.y < GROUND;
+      if (!f.hit && ((f.mode === "laneStrike" && outsideShelter) || (f.mode === "sweepStrike" && inSweep))) {
+        f.hit = true;
+        game.player.takeDamage(f.mode === "laneStrike" ? 42 : 34, 14, game, "audit");
+      }
+    }
+
     attackName(key) {
       return {
         weeklyDart: "周报飞镖",
@@ -920,11 +992,16 @@
 
     takeDamage(amount, game, knock = 0) {
       if (this.dead) return;
+      if (this.finale) {
+        const exposed = this.finale.mode === "recovery";
+        amount *= exposed ? this.level.finale.exposedScale : this.level.finale.shieldScale;
+        if (!exposed && this.flash <= 0) game.floatText("护盾 · 先走位", this.x + this.w / 2, this.y - 10, "#91dfd4");
+      }
       this.hp -= amount;
       game.sound("hit", amount);
       this.hitReaction = .18;
       this.flash = 0.12;
-      receiveImpact(this, knock, game, 0.65);
+      if (!this.finale) receiveImpact(this, knock, game, 0.65);
       game.stats.hits += 1;
       game.cheer(this.hp <= 0 ? "恭喜过关!" : "恭喜破防!", this.x + this.w / 2, this.y + 8, this.hp <= 0 ? COLORS.yellow : this.color);
       game.player.rage = clamp(game.player.rage + amount * 0.28, 0, 100);
@@ -934,6 +1011,7 @@
         game.stats.bosses += 1;
         game.floorClear();
       }
+      return amount;
     }
 
     draw(ctx, cam) {
