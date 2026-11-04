@@ -6,7 +6,18 @@
   const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b,v));
   const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); };
   const mix = (a,b,t) => a + (b-a) * ease(t);
-  function rr(c,x,y,w,h,r,fill,stroke) { if(w<=0||h<=0)return; c.beginPath(); c.roundRect(x,y,w,h,r); if(fill){c.fillStyle=fill;c.fill();} if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();} }
+  function rr(c,x,y,w,h,r,fill,stroke) {
+    if(w<=0||h<=0)return;
+    // Basic paths work across browsers and wx runtimes with differing roundRect APIs.
+    r=Math.max(0,Math.min(r,w/2,h/2));
+    c.beginPath();c.moveTo(x+r,y);
+    c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);
+    c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);
+    c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);
+    c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();
+    if(fill){c.fillStyle=fill;c.fill();}
+    if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();}
+  }
   function poly(c,points,fill,stroke){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.closePath();if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.stroke();}}
   function line(c,points,color,width=1){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.stroke();}
   function ellipse(c,x,y,rx,ry,fill){c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fillStyle=fill;c.fill();}

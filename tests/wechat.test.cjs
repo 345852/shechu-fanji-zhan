@@ -11,13 +11,20 @@ execFileSync(process.execPath, [path.join(root, 'scripts/build-wechat.cjs'), '--
 const createCore = require(path.join(temp, 'core.js'));
 const createRuntime = require('../minigame/runtime');
 process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
-function setup(info = {}, storage = new Map(), supported = true) {
+function setup(info = {}, storage = new Map(), supported = true, roundRectAvailable = true) {
   const callbacks = {}, frames = new Map(), canvases = [], audio = [], text = [];
   let ms = 5000, nextId = 0;
   const param = () => ({value:0,setValueAtTime(){},setTargetAtTime(){},cancelScheduledValues(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}});
   const node = () => ({gain:param(),frequency:param(),Q:param(),threshold:param(),knee:param(),ratio:param(),attack:param(),release:param(),playbackRate:param(),connect(){},disconnect(){},start(){},stop(){this.stopped=true;}});
   const wx = {
-    createCanvas() { const context = new Proxy({fillText:t=>text.push(t),measureText:t=>({width:t.length*8}),createLinearGradient:()=>({addColorStop(){}}),createRadialGradient:()=>({addColorStop(){}})}, {get:(o,key)=>key in o?o[key]:()=>{}}); const c={width:0,height:0,getContext:()=>context};canvases.push(c);return c; },
+    createCanvas() {
+      // DevTools 1.06.2503300 rejects scalar radii; older runtimes may omit roundRect.
+      const roundRect = roundRectAvailable ? (x,y,w,h,radii) => {
+        if (!Array.isArray(radii)) throw new TypeError("Failed to execute 'roundRect': The provided value cannot be converted to a sequence.");
+      } : undefined;
+      const context = new Proxy({roundRect,fillText:t=>text.push(t),measureText:t=>({width:t.length*8}),createLinearGradient:()=>({addColorStop(){}}),createRadialGradient:()=>({addColorStop(){}})}, {get:(o,key)=>key in o?o[key]:()=>{}});
+      const c={width:0,height:0,getContext:()=>context};canvases.push(c);return c;
+    },
     getWindowInfo: () => ({windowWidth:390,windowHeight:844,pixelRatio:3,safeArea:{left:0,right:390,top:47,bottom:810},...info}),
     getMenuButtonBoundingClientRect: () => ({bottom:80}),
     getPerformance: () => ({now:()=>ms*1000}),
@@ -101,4 +108,13 @@ test('all floors and state overlays render and native buttons reflect charge, re
   s.click('perk');assert.equal(s.game.task.adUsesLeft,2);
   s.game.state='ending';s.game.draw();assert.ok(s.text.includes('点右下角「再来」开始新一轮'));
   s.click('system');assert.equal(s.game.floorIndex,0);assert.equal(s.game.state,'playing');s.runtime.dispose();
+});
+
+test('title, controls and all floors render when native roundRect is unavailable',()=>{
+  const s=setup({},new Map(),true,false);
+  assert.equal(s.game.state,'title');assert.ok(s.text.includes('开始反击  ↗'));
+  s.click('start');
+  for(let i=0;i<5;i++){s.game.loadFloor(i,false);s.game.draw();}
+  s.click('system');assert.equal(s.game.state,'paused');s.game.draw();
+  s.game.state='ending';s.game.draw();s.runtime.dispose();
 });
