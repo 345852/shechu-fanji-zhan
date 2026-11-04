@@ -1,4 +1,5 @@
 'use strict';
+const createNativeAudioClass = require('./native-audio');
 
 // Native wx canvas/touch/audio lifecycle. Core modules receive a small, private host facade;
 // no browser DOM, web-view, network request or injected global window is needed.
@@ -49,13 +50,15 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
   }
   readLayout();
   createCore({ window, document, performance, requestAnimationFrame: schedule });
+  if (wx.createInnerAudioContext) window.GameAudio = createNativeAudioClass(wx, document, performance);
   game = new window.BossRushGame(stage);
   const coreDraw = game.draw.bind(game);
   const overlay = game.drawOverlay.bind(game);
   game.drawOverlay = (c, title, sub) => overlay(c, title, game.state === 'paused' ? '点右下角「继续」返回战斗' : sub);
   const button = (id, x, y, w, h, label, keys = [], extra = {}) => ({ id, x, y, w, h, label, keys, ...extra });
+  const audioReady = () => game.audio.ready === undefined ? !!game.audio.ctx && game.audio.ctx.state === 'running' : game.audio.ready;
   function controls() {
-    const sound = game.audio.muted ? '已静音' : game.audio.ctx && game.audio.ctx.state === 'running' ? '音效开' : wx.createWebAudioContext ? '启用声音' : '声音不可用';
+    const sound = game.audio.muted ? '已静音' : game.audio.error ? '重试声音' : audioReady() ? '音效开' : (wx.createInnerAudioContext || wx.createWebAudioContext) ? '启用声音' : '声音不可用';
     if (game.state === 'title') return [
       button('start', 38, 620, 354, 62, '开始反击  ↗', [], { release: true, primary: true }),
       button('sound', 142, 698, 146, 36, sound, [], { release: true })
@@ -92,7 +95,7 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
   function activate(button) {
     if (button.id === 'sound') {
       if (game.audio.muted) game.audio.setMuted(false, true);
-      else if (!game.audio.ctx || game.audio.ctx.state !== 'running') game.audio.unlock(true);
+      else if (!audioReady()) game.audio.unlock(true);
       else game.audio.setMuted(true);
     } else { tap('enter'); }
   }
@@ -142,6 +145,7 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
   bind('onKeyUp', 'offKeyUp', event => { keyboard.delete(game.input.normalize(event.key)); heldKeys(); });
   bind('onHide', 'offHide', () => {
     document.hidden = true; resetInput(); document.emit('visibilitychange'); game.audio.setActive(false);
+    if (game.audio.interrupt) game.audio.interrupt();
     if (frameId !== null) frameApi.cancelAnimationFrame(frameId); frameId = null;
   });
   bind('onShow', 'offShow', () => {
@@ -149,7 +153,8 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
     game.last = performance.now(); if (started && hidden) game.start();
   });
   bind('onAudioInterruptionBegin', 'offAudioInterruptionBegin', () => {
-    resetInput(); game.audio.stop(); if (game.state === 'playing') game.state = 'paused'; game.audio.setActive(false);
+    resetInput(); if (game.audio.interrupt) game.audio.interrupt(); else game.audio.stop();
+    if (game.state === 'playing') game.state = 'paused'; game.audio.setActive(false);
   });
   bind('onWindowResize', 'offWindowResize', readLayout);
 
@@ -190,6 +195,7 @@ module.exports = function createRuntime(wx, frameApi, createCore) {
     dispose() {
       if (disposed) return; disposed = true; cleanups.forEach(fn => fn()); resetInput(); game.audio.stop();
       if (frameId !== null) frameApi.cancelAnimationFrame(frameId);
+      if (game.audio.dispose) { game.audio.dispose(); return; }
       const audio = game.audio.ctx; game.audio.ctx = null;
       if (audio) { audio.onstatechange = null; Promise.resolve(audio.close()).catch(() => {}); }
     }

@@ -14,7 +14,8 @@ const files = ['data', 'audio', 'input', 'renderer', 'entities', 'game'];
 const source = files.map(name => fs.readFileSync(path.join(root, 'js', name + '.js'), 'utf8')).join('\n');
 const core = `'use strict';\nmodule.exports = function createCore(env) {\nconst { window, document, performance, requestAnimationFrame } = env;\n${source}\nreturn window;\n};\n`;
 fs.writeFileSync(path.join(out, 'core.js'), core);
-for (const file of ['game.js', 'runtime.js', 'game.json']) fs.copyFileSync(path.join(root, 'minigame', file), path.join(out, file));
+for (const file of ['game.js', 'runtime.js', 'game.json', 'native-audio.js']) fs.copyFileSync(path.join(root, 'minigame', file), path.join(out, file));
+const audioFiles = require('./build-wechat-audio.cjs')(root, out);
 fs.writeFileSync(path.join(out, 'project.config.json'), JSON.stringify({
   description: '社畜反击战 · 微信小游戏', compileType: 'game', appid,
   projectname: 'shechu-fanji-zhan', miniprogramRoot: './',
@@ -22,7 +23,7 @@ fs.writeFileSync(path.join(out, 'project.config.json'), JSON.stringify({
   packOptions: { ignore: [{ type: 'file', value: 'build-info.json' }] }
 }, null, 2) + '\n');
 const manifest = { appidConfigured: !!appid, sourceSha256: crypto.createHash('sha256').update(source).digest('hex'), files: {} };
-for (const file of ['core.js', 'game.js', 'runtime.js', 'game.json', 'project.config.json']) {
+for (const file of ['core.js', 'game.js', 'runtime.js', 'game.json', 'native-audio.js', 'project.config.json', ...audioFiles]) {
   const bytes = fs.readFileSync(path.join(out, file));
   manifest.files[file] = { bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
 }

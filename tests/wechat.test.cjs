@@ -9,10 +9,10 @@ const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'shechu-wechat-test-'));
 execFileSync(process.execPath, [path.join(root, 'scripts/build-wechat.cjs'), '--out', temp]);
 const createCore = require(path.join(temp, 'core.js'));
-const createRuntime = require('../minigame/runtime');
+const createRuntime = require(path.join(temp,'runtime.js'));
 process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
-function setup(info = {}, storage = new Map(), supported = true, roundRectAvailable = true) {
-  const callbacks = {}, frames = new Map(), canvases = [], audio = [], text = [];
+function setup(info = {}, storage = new Map(), supported = true, roundRectAvailable = true, nativeAudio = false) {
+  const callbacks = {}, frames = new Map(), canvases = [], audio = [], text = [], nativePlayers = [];
   let ms = 5000, nextId = 0;
   const param = () => ({value:0,setValueAtTime(){},setTargetAtTime(){},cancelScheduledValues(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}});
   const node = () => ({gain:param(),frequency:param(),Q:param(),threshold:param(),knee:param(),ratio:param(),attack:param(),release:param(),playbackRate:param(),connect(){},disconnect(){},start(){},stop(){this.stopped=true;}});
@@ -37,6 +37,15 @@ function setup(info = {}, storage = new Map(), supported = true, roundRectAvaila
       resume(){this.state='running';return Promise.resolve();},close(){this.state='closed';return Promise.resolve();}};
     audio.push(c);return c;
   };
+  if(nativeAudio){
+    wx.setInnerAudioOption=o=>{assert.equal(o.obeyMuteSwitch,false);o.success();};
+    wx.createInnerAudioContext=o=>{
+      assert.equal(o.useWebAudioImplement,false);
+      const handlers={},p={onPlay:f=>handlers.play=f,onEnded:f=>handlers.ended=f,onError:f=>handlers.error=f,
+        play(){this.played=true;handlers.play();},stop(){this.stopped=true;},pause(){this.paused=true;},destroy(){this.destroyed=true;}};
+      nativePlayers.push(p);return p;
+    };
+  }
   for(const event of ['TouchStart','TouchMove','TouchEnd','TouchCancel','KeyDown','KeyUp','Hide','Show','WindowResize','AudioInterruptionBegin']){
     wx['on'+event]=fn=>callbacks[event]=fn;wx['off'+event]=fn=>{if(callbacks[event]===fn)delete callbacks[event];};
   }
@@ -46,7 +55,7 @@ function setup(info = {}, storage = new Map(), supported = true, roundRectAvaila
   const point=(id,finger=1)=>{const b=runtime.controls().find(b=>b.id===id);assert.ok(b,id);const l=runtime.layout;return {identifier:finger,clientX:l.x+(b.x+b.w/2)*l.scale,clientY:l.y+(b.y+b.h/2)*l.scale};};
   const send=(event,p)=>callbacks[event]({changedTouches:Array.isArray(p)?p:[p]});
   const click=id=>{const p=point(id);send('TouchStart',p);send('TouchEnd',p);tick();};
-  return {runtime,game:runtime.game,wx,callbacks,frames,canvases,audio,text,storage,tick,point,send,click};
+  return {runtime,game:runtime.game,wx,callbacks,frames,canvases,audio,nativePlayers,text,storage,tick,point,send,click};
 }
 
 test('native entry boots without browser globals and fits canvas below the WeChat capsule',()=>{
@@ -63,6 +72,9 @@ test('build is an isolated game project, excludes browser files and keeps AppID 
   assert.equal(config.compileType,'game');assert.equal(config.appid,'');assert.equal(config.setting.urlCheck,true);
   assert.equal(fs.existsSync(path.join(temp,'index.html')),false);
   assert.equal(fs.existsSync(path.join(temp,'style.css')),false);
+  const manifest=JSON.parse(fs.readFileSync(path.join(temp,'build-info.json')));
+  assert.ok(manifest.files['native-audio.js']);assert.ok(manifest.files['assets/audio/movement.wav']);
+  for(const key of Object.keys(require('../minigame/native-audio').cues))assert.ok(manifest.files['assets/audio/'+key+'.wav']);
   assert.throws(()=>execFileSync(process.execPath,[path.join(root,'scripts/build-wechat.cjs'),'--appid','not-an-appid','--out',temp],{stdio:'pipe'}));
   const s=setup();
   let booted=false;
@@ -117,4 +129,17 @@ test('title, controls and all floors render when native roundRect is unavailable
   for(let i=0;i<5;i++){s.game.loadFloor(i,false);s.game.draw();}
   s.click('system');assert.equal(s.game.state,'paused');s.game.draw();
   s.game.state='ending';s.game.draw();s.runtime.dispose();
+});
+
+test('native game uses media audio on touch, shows actual readiness and disposes it with the runtime',()=>{
+  const s=setup({},new Map(),true,true,true);
+  assert.equal(s.nativePlayers.length,0);s.click('start');assert.equal(s.audio.length,0);
+  assert.ok(s.nativePlayers.some(p=>p.src==='assets/audio/start.wav'&&p.played));
+  assert.equal(s.runtime.controls().find(b=>b.id==='sound').label,'音效开');
+  s.send('TouchStart',s.point('right'));s.tick(10);assert.ok(s.game.audio.movementLoop);
+  s.click('sound');assert.equal(s.game.audio.muted,true);assert.equal(s.game.audio.movementLoop.level,0);
+  s.click('sound');assert.equal(s.game.audio.muted,false);s.callbacks.Hide();assert.equal(s.game.state,'paused');
+  s.callbacks.Show();assert.equal(s.game.state,'paused');assert.equal(s.game.audio.route,'idle');
+  s.click('system');assert.equal(s.game.state,'playing');
+  s.runtime.dispose();assert.ok(s.nativePlayers.every(p=>p.destroyed));assert.equal(s.frames.size,0);
 });
