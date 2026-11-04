@@ -99,7 +99,7 @@
       }
       const now = this.ctx.currentTime;
       // A strike can hit several bodies at once. Give it one clear impact, not a volume spike.
-      if ((['hit', 'parry', 'hurt'].includes(name) || name.startsWith('pickup')) && now - (this.lastPlayed.get(name) ?? -1) < 0.055) return;
+      if ((['hit', 'parry', 'hurt', 'enemyReady', 'enemySwing'].includes(name) || name.startsWith('pickup')) && now - (this.lastPlayed.get(name) ?? -1) < 0.055) return;
       this.lastPlayed.set(name, now);
       this.synthesize(name, variation, now + 0.005);
     }
@@ -140,6 +140,13 @@
       const tone = (offset, duration, gain, from, to = from, type = 'sine') => this.voice(at + offset, duration, gain, from, to, type);
       const air = (offset, duration, gain, from, to) => this.voice(at + offset, duration, gain, from, to, 'sine', true);
       switch (name) {
+        case 'enemyReady':
+          tone(0, 0.09, 0.09, variation > 1 ? 440 : 330, 260, 'triangle');
+          break;
+        case 'enemySwing':
+          air(0, 0.12, 0.19, 1400 + variation * 180, 320);
+          tone(0, 0.10, 0.12, 170 + variation * 15, 70, 'triangle');
+          break;
         case 'step': {
           const strength = Math.max(0.4, Math.min(1, Math.abs(variation)));
           tone(0, 0.07, 0.17 * strength, variation > 0 ? 155 : 125, 65);

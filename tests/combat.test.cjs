@@ -229,3 +229,86 @@ test('crowded contact preserves player space, including when a boss blocks the l
     for(const enemy of [...game.enemies,game.boss])assert.ok(enemy.x>=p.x+p.w+6-1e-8||enemy.x+enemy.w<=p.x-6+1e-8);
   }
 });
+
+test('each opponent telegraphs a directional strike before dealing damage once',()=>{
+  for(const type of ['hr','intern','bootlicker'])for(const side of [-1,1]){
+    const {game,window}=setup(),p=game.player;p.x=400;p.invuln=0;
+    const enemy=new window.Enemy(type,p.x+side*55);game.enemies=[enemy];
+    const attacks=[];p.takeDamage=(...args)=>attacks.push(args);
+    advance(game,1/120);assert.equal(enemy.attackPhase,'windup');assert.equal(enemy.dir,-side);
+    const position=enemy.x;advance(game,.15);assert.equal(attacks.length,0);assert.equal(enemy.x,position);
+    advance(game,.65);assert.equal(attacks.length,1);assert.equal(enemy.x,position);
+    assert.equal(enemy.meleeAttack,null);assert.equal(game.screenShake,0);
+  }
+});
+test('stepping out, jumping over, or crossing behind a windup avoids the committed strike',()=>{
+  for(const dodge of ['retreat','jump','behind']){
+    const {game,window}=setup(),p=game.player;p.x=400;p.invuln=0;
+    const enemy=new window.Enemy('hr',p.x+60);game.enemies=[enemy];advance(game,1/120);
+    const health=p.health;
+    if(dodge==='retreat')game.input.setKey('left',true);
+    if(dodge==='jump')game.input.setKey('space',true);
+    if(dodge==='behind')p.x=enemy.x+enemy.w+20;
+    advance(game,.4);assert.equal(p.health,health,dodge);assert.equal(enemy.dir,-1);
+  }
+});
+test('an interrupted enemy stops its strike and retaliates only after hit stun',()=>{
+  const {game,window}=setup(),p=game.player;p.x=400;p.invuln=0;
+  const enemy=new window.Enemy('hr',p.x+60);game.enemies=[enemy];
+  const cues=[];game.sound=name=>cues.push(name);advance(game,.1);
+  assert.equal(enemy.attackPhase,'windup');enemy.takeDamage(5,35,game);
+  assert.equal(enemy.meleeAttack,null);const health=p.health;
+  advance(game,.3);assert.equal(p.health,health);assert.ok(enemy.hitStun>0);assert.ok(!cues.includes('enemySwing'));
+  advance(game,.1);assert.equal(enemy.attackPhase,'windup');assert.equal(enemy.meleeAttack.counter,true);
+  advance(game,.26);assert.ok(p.health<health);assert.equal(cues.filter(c=>c==='enemySwing').length,1);
+});
+test('held player combos leave a counter opportunity without extending one stun indefinitely',()=>{
+  for(const hz of [30,60,120]){
+    const {game,window}=setup(),p=game.player;p.x=400;p.invuln=0;
+    const enemy=new window.Enemy('hr',p.x+p.w+6);game.enemies=[enemy];
+    game.input.setKey('j',true);game.last=1000;
+    for(let i=1;i<=Math.round(hz*.71);i++)game.loop(1000+i*1000/hz);
+    assert.ok(enemy.hp<enemy.maxHp);assert.ok(p.health<p.maxHealth,`${hz} Hz counter`);
+    assert.equal(p.x,400);assert.ok(enemy.x>=p.x+p.w+6);
+  }
+});
+test('enemy strikes respect freeze, pause, lethal interruption and the player parry',()=>{
+  for(const mode of ['freeze','pause','defeat','parry']){
+    const {game,window}=setup(),p=game.player;p.x=400;p.invuln=0;
+    const enemy=new window.Enemy('hr',p.x+60);game.enemies=[enemy];advance(game,.05);
+    const health=p.health,timer=enemy.attackTimer;
+    if(mode==='freeze')game.freezeTimer=2;
+    if(mode==='pause')game.state='paused';
+    if(mode==='defeat')enemy.takeDamage(100,35,game);
+    if(mode==='parry')p.parryTimer=1;
+    advance(game,.5);assert.equal(p.health,health,mode);
+    if(['freeze','pause'].includes(mode))assert.equal(enemy.attackTimer,timer);
+    if(mode==='defeat')assert.equal(game.enemies.length,0);
+    if(mode==='parry')assert.ok(p.rage>=10);
+  }
+});
+test('all five bosses answer nearby and surviving hits without moving into the player',()=>{
+  for(let floor=0;floor<5;floor++){
+    const {game,window}=setup();game.loadFloor(floor,false);game.enemies=[];game.pickups=[];game.level={...game.level,hazards:[]};
+    const p=game.player;p.x=1500;p.invuln=0;game.phase='boss';
+    const boss=new window.Boss(game.level,floor);boss.x=p.x+p.w+6;boss.attackCd=0;game.boss=boss;
+    advance(game,1/120);assert.equal(boss.attackPhase,'windup');
+    advance(game,.43);assert.ok(p.health<p.maxHealth);
+    p.invuln=0;const health=p.health;boss.takeDamage(5,game,35);advance(game,.3);assert.equal(p.health,health);
+    advance(game,.4);assert.ok(p.health<health,`floor ${floor}`);assert.equal(p.x,1500);assert.ok(boss.x>=p.x+p.w+6);
+  }
+});
+test('out-of-range opponents are alerted by a hit and approach before retaliating',()=>{
+  const {game,window}=setup(),p=game.player;p.x=200;p.invuln=0;
+  const enemy=new window.Enemy('intern',700);game.enemies=[enemy];advance(game,.5);assert.equal(enemy.x,700);
+  enemy.takeDamage(1,35,game);advance(game,.4);const start=enemy.x;advance(game,.6);
+  assert.ok(enemy.x<start);assert.equal(p.health,p.maxHealth);assert.equal(enemy.meleeAttack,null);
+});
+test('opponent windup and recovery poses connect continuously to idle',()=>{
+  const {game,window,ctx}=setup(),p=game.player;p.x=400;
+  const enemy=new window.Enemy('hr',460);game.enemies=[enemy];advance(game,1/120);
+  const sample=timer=>{const angles=[];ctx.rotate=a=>angles.push(a);enemy.attackTimer=timer;window.GameArt.enemy(ctx,enemy,{x:0,y:0});return angles;};
+  const idle=sample(0),start=sample(enemy.attackDuration),end=sample(.000001),windup=sample(enemy.attackDuration-enemy.meleeAttack.windup);
+  idle.forEach((a,i)=>{assert.ok(Math.abs(a-start[i])<.0001);assert.ok(Math.abs(a-end[i])<.0001);});
+  assert.ok(windup.some((a,i)=>Math.abs(a-idle[i])>1));
+});

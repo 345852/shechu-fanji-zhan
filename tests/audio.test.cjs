@@ -80,7 +80,7 @@ test('muting or a delayed resume cannot replay the opening later', async () => {
 
 test('all sound palettes schedule bounded voices that disconnect after playback', () => {
   const s = setup(); s.gesture(); s.sound.setActive(true);
-  for (const name of ['start', 'swing', 'hit', 'reflect', 'parry', 'thrust', 'ranged', 'ultimate', 'hurt', 'step', 'jump', 'land', 'pickupCoffee', 'pickupBrief', 'pickupAmmo', 'pickupRest']) {
+  for (const name of ['enemyReady', 'enemySwing', 'start', 'swing', 'hit', 'reflect', 'parry', 'thrust', 'ranged', 'ultimate', 'hurt', 'step', 'jump', 'land', 'pickupCoffee', 'pickupBrief', 'pickupAmmo', 'pickupRest']) {
     const before = s.sources.length; s.sound.ctx.currentTime += 1; s.sound.play(name, 3);
     assert.ok(s.sources.length > before, name);
     for (const source of s.sources.slice(before)) {

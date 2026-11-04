@@ -16,7 +16,12 @@
   // A hit interrupts pursuit and attacks; knockback replaces existing forward momentum.
   function receiveImpact(entity, knock, game, weight = 1) {
     const away = Math.sign((entity.x + entity.w / 2) - (game.player.x + game.player.w / 2)) || game.player.dir;
-    entity.hitStun = Math.max(entity.hitStun || 0, 0.30 + Math.min(0.16, Math.abs(knock || 0) * 0.001));
+    // More hits interrupt the action, but do not restart an already-running stun forever.
+    if (!(entity.hitStun > 0)) entity.hitStun = 0.30 + Math.min(0.16, Math.abs(knock || 0) * 0.001);
+    entity.counterQueued = 2.4;
+    entity.alertTimer = 3;
+    entity.meleeAttack = null;
+    entity.attackPhase = "idle";
     entity.vx = away * Math.max(95, Math.abs(knock || 0)) * weight;
     entity.attackTimer = 0;
     entity.attackCd = Math.max(entity.attackCd, 0.2);
@@ -31,6 +36,58 @@
     entity.x = clamp(entity.x + entity.vx * (1 - decay) / 10, 20, game.worldWidth - entity.w - 20);
     entity.vx *= decay;
     entity.hitStun = Math.max(0, entity.hitStun - dt);
+    return true;
+  }
+
+  const CONTACT_ATTACKS = {
+    hr: { name: "薪资拍击", reach: 46, windup: 0.30, damage: 7, mind: 9, cooldown: 1.25, voice: 1 },
+    intern: { name: "文件挥击", reach: 40, windup: 0.32, damage: 5, mind: 5, cooldown: 1.35, voice: 2 },
+    bootlicker: { name: "汇报突击", reach: 50, windup: 0.26, damage: 6, mind: 6, cooldown: 1.15, voice: 3 },
+    boss: { name: "验收重击", reach: 56, windup: 0.34, damage: 12, mind: 10, cooldown: 1.35, voice: 4 }
+  };
+
+  function canReachPlayer(entity, game, reach) {
+    return Math.abs(center(game.player).x - center(entity).x) < (entity.w + game.player.w) / 2 + reach - 12 &&
+      game.player.y + game.player.h > GROUND - 64 && game.player.y < GROUND;
+  }
+
+  function startContactAttack(entity, game, profile, counter = false) {
+    const windup = counter ? 0.20 : profile.windup;
+    entity.dir = Math.sign(center(game.player).x - center(entity).x) || entity.dir || 1;
+    entity.vx = 0;
+    entity.rushTimer = 0;
+    entity.counterQueued = 0;
+    entity.meleeAttack = { ...profile, windup, reach: profile.reach + (counter ? 18 : 0), counter, struck: false };
+    entity.attackKind = "enemyMelee";
+    entity.attackPhase = "windup";
+    entity.attackDuration = windup + 0.12 + 0.28;
+    entity.attackTimer = entity.attackDuration;
+    entity.attackCd = profile.cooldown;
+    entity.actionText = (counter ? "反击 · " : "") + profile.name;
+    entity.actionTimer = entity.attackDuration;
+    game.sound("enemyReady", counter ? 2 : 1);
+  }
+
+  function updateContactAttack(entity, dt, game) {
+    const attack = entity.meleeAttack;
+    if (!attack) return false;
+    entity.vx = 0;
+    entity.attackTimer = Math.max(0, entity.attackTimer - dt);
+    entity.actionTimer = entity.attackTimer;
+    const elapsed = entity.attackDuration - entity.attackTimer;
+    entity.attackPhase = elapsed < attack.windup ? "windup" : elapsed < attack.windup + 0.12 ? "strike" : "recovery";
+    if (!attack.struck && elapsed >= attack.windup + 0.06) {
+      attack.struck = true;
+      const area = { x: entity.dir > 0 ? entity.x + entity.w - 3 : entity.x - attack.reach + 3,
+        y: GROUND - 64, w: attack.reach, h: 56 };
+      game.sound("enemySwing", attack.voice);
+      game.addSlash(area, entity.dir, { kind: "enemy", color: "#f89f9b", life: 0.20 });
+      if (rects(area, game.player.hitbox)) game.player.takeDamage(attack.damage, attack.mind, game, "minion");
+    }
+    if (entity.attackTimer === 0) {
+      entity.meleeAttack = null;
+      entity.attackPhase = "idle";
+    }
     return true;
   }
 
@@ -623,6 +680,11 @@
       this.attackCd = 0;
       this.dead = false;
       this.hitStun = 0;
+      this.counterQueued = 0;
+      this.alertTimer = 0;
+      this.meleeAttack = null;
+      this.attackPhase = "idle";
+      this.attackTimer = 0;
       this.animTime = 0;
       this.walkCycle = 0;
       this.label = type === "hr" ? "HR" : type === "intern" ? "实习" : "舔狗";
@@ -635,31 +697,28 @@
     }
 
     update(dt, game) {
+      if (this.dead || game.state !== "playing") return;
       this.animTime += dt;
       this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
       if (game.freezeTimer > 0) return;
-      if (updateHitStun(this, dt, game)) return;
-      this.walkCycle += Math.abs(this.vx || 45) * dt * 0.07;
       this.attackCd = Math.max(0, this.attackCd - dt);
-      this.attackTimer = Math.max(0, (this.attackTimer || 0) - dt);
-      const dx = (game.player.x + game.player.w / 2) - (this.x + this.w / 2);
-      this.dir = Math.sign(dx) || 1;
-      const dist = Math.abs(dx);
-      if (dist < 380) {
-        const dir = Math.sign(dx) || 1;
-        this.vx += dir * 520 * dt;
-        this.vx = clamp(this.vx, -85, 85);
-      } else {
-        this.vx *= Math.pow(0.02, dt);
-      }
-      this.x += this.vx * dt;
-      const verticalContact = this.y < game.player.y + game.player.h && this.y + this.h > game.player.y;
-      if (dist < (this.w + game.player.w) / 2 + 8 && verticalContact && this.attackCd <= 0) {
-        game.player.takeDamage(this.type === "hr" ? 7 : 5, this.type === "hr" ? 9 : 5, game, "minion");
-        this.attackCd = 1.35;
-        this.attackDuration = .35;
-        this.attackTimer = .35;
-      }
+      this.alertTimer = Math.max(0, (this.alertTimer || 0) - dt);
+      if (updateHitStun(this, dt, game)) return;
+      this.counterQueued = Math.max(0, (this.counterQueued || 0) - dt);
+      if (updateContactAttack(this, dt, game)) return;
+      const dx = center(game.player).x - center(this).x;
+      this.dir = Math.sign(dx) || this.dir || 1;
+      const dist = Math.abs(dx), profile = CONTACT_ATTACKS[this.type] || CONTACT_ATTACKS.bootlicker;
+      if (dist < 380) this.alertTimer = 3;
+      const counter = this.counterQueued > 0;
+      if (canReachPlayer(this, game, profile.reach + (counter ? 18 : 0))) {
+        this.vx = 0;
+        if (counter || this.attackCd <= 0) startContactAttack(this, game, profile, counter);
+      } else if (this.alertTimer > 0) {
+        this.vx = clamp(this.vx + this.dir * 520 * dt, -85, 85);
+      } else this.vx *= Math.pow(0.02, dt);
+      this.x = clamp(this.x + this.vx * dt, 20, game.worldWidth - this.w - 20);
+      this.walkCycle += Math.abs(this.vx) * dt * 0.07;
     }
 
     takeDamage(amount, knock, game) {
@@ -673,6 +732,7 @@
       game.burst(this.x + this.w / 2, this.y + 18, this.color, 5);
       if (this.hp <= 0) {
         this.dead = true;
+        this.counterQueued = 0;
         game.stats.defeated += 1;
         if (game.advanceTask) game.advanceTask(2, "阻碍处理 +2%", 0.4);
         game.player.rage = clamp(game.player.rage + 12, 0, 100);
@@ -703,6 +763,11 @@
       this.phase = 1;
       this.dead = false;
       this.hitStun = 0;
+      this.counterQueued = 0;
+      this.alertTimer = 0;
+      this.meleeAttack = null;
+      this.attackPhase = "idle";
+      this.attackTimer = 0;
       this.animTime = 0;
       this.walkCycle = 0;
       this.actionText = "";
@@ -714,11 +779,15 @@
     }
 
     update(dt, game) {
+      if (this.dead || game.state !== "playing") return;
       this.animTime += dt;
       this.hitReaction = Math.max(0, (this.hitReaction || 0) - dt);
       if (game.freezeTimer > 0) return;
+      this.attackCd = Math.max(0, this.attackCd - dt);
       if (updateHitStun(this, dt, game)) return;
-      this.walkCycle += Math.abs(this.vx || 45) * dt * 0.07;
+      this.counterQueued = Math.max(0, (this.counterQueued || 0) - dt);
+      if (updateContactAttack(this, dt, game)) return;
+      this.walkCycle += Math.abs(this.vx || 0) * dt * 0.07;
       this.flash = Math.max(0, this.flash - dt);
       this.attackTimer = Math.max(0, (this.attackTimer || 0) - dt);
       this.actionTimer = Math.max(0, this.actionTimer - dt);
@@ -728,6 +797,11 @@
         this.phase = hpPct < 0.34 ? 3 : hpPct < 0.67 ? 2 : 1;
       }
       const dx = game.player.x - this.x;
+      const counter = this.counterQueued > 0;
+      if ((counter || this.attackCd <= 0) && canReachPlayer(this, game, CONTACT_ATTACKS.boss.reach + (counter ? 18 : 0))) {
+        startContactAttack(this, game, CONTACT_ATTACKS.boss, counter);
+        return;
+      }
       if (this.rushTimer > 0) {
         this.rushTimer = Math.max(0, this.rushTimer - dt);
         this.x = clamp(this.x + this.rushDir * 480 * dt, game.bossGate - 100, game.worldWidth - this.w);
@@ -736,8 +810,10 @@
       if (Math.abs(dx) > 120) {
         this.x += Math.sign(dx) * (42 + this.floorIndex * 8) * dt;
       }
-      this.attackCd -= dt;
-      if (this.attackCd <= 0) this.performAttack(game);
+      if (this.attackCd <= 0 || counter) {
+        this.counterQueued = 0;
+        this.performAttack(game);
+      }
     }
 
     performAttack(game) {
@@ -746,6 +822,9 @@
       if (this.floorIndex === 4) {
         attack = this.phase === 1 ? "scythe" : this.phase === 2 ? "shockwave" : "layoffStorm";
       }
+      this.attackKind = "special";
+      this.meleeAttack = null;
+      this.attackPhase = "idle";
       this.actionText = this.attackName(attack);
       this.actionTimer = 1.1;
       this.attackDuration = .45;
