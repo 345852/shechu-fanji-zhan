@@ -116,20 +116,24 @@
         game.toast("咖啡续命：体力恢复，脚下生风");
         game.floatText("+42 体力", player.x + player.w / 2, player.y - 8, COLORS.green);
         this.used = true;
+        game.sound("pickupCoffee");
       } else if (this.type === "stapler") {
         player.ammo = clamp(player.ammo + 5, 0, player.maxAmmo);
         game.toast("补充订书机弹药 +5");
         this.used = true;
+        game.sound("pickupAmmo");
       } else if (this.type === "brief") {
         const amount = game.level.pickupProgress || 8;
         if (game.collectWorkItem) game.collectWorkItem(amount, `${game.level.deliverable} +${amount}%`);
         game.floatText(`事项 +${amount}%`, player.x + player.w / 2, player.y - 10, COLORS.yellow);
         this.used = true;
+        game.sound("pickupBrief");
       } else if (this.type === "toilet" && !game.toiletUsed) {
         player.mind = player.maxMind;
         game.toiletUsed = true;
         this.used = true;
         game.toast("带薪拉屎：心态满血复活");
+        game.sound("pickupRest");
       }
     }
 
@@ -162,6 +166,8 @@
       this.comboWindow = 0;
       this.animTime = 0;
       this.walkCycle = 0;
+      this.stepDistance = 0;
+      this.stepSide = 1;
       this.crouchPose = 0;
       this.combo = 0;
       this.invuln = 0;
@@ -212,6 +218,8 @@
       this.combo = 0;
       this.onGround = true;
       this.crouchPose = 0;
+      this.stepDistance = 0;
+      this.stepSide = 1;
     }
 
     get hitbox() {
@@ -281,6 +289,7 @@
         if ((input.consume("up") || input.consume("space")) && this.onGround && !this.crouching) {
           this.vy = -560;
           this.onGround = false;
+          game.sound("jump");
         }
 
         if (input.consume("q")) this.switchMove(-1, game);
@@ -331,6 +340,26 @@
       if (this.health <= 0 && !this.dead) {
         this.dead = true;
         game.playerDown();
+      }
+    }
+
+    updateMovementAudio(previous, game) {
+      if (this.dead || game.state !== "playing") return;
+      if (this.onGround && previous.onGround === false) game.sound("land");
+      const distance = Math.abs(this.x - previous.x);
+      const walking = !!game.input.down.left !== !!game.input.down.right;
+      const locked = this.broken > 0 || this.meetingTrap > 0 || game.freezeTimer > 0;
+      // Read final positions after body/wall resolution, not desired velocity or held keys alone.
+      if (!walking || locked || !this.onGround || !previous.onGround || this.thrustTimer > 0 || distance < 0.001 || distance > 16) {
+        this.stepDistance = 0;
+        return;
+      }
+      this.stepDistance += distance;
+      const stride = Math.PI / 0.065; // Same distance per footfall as the leg animation.
+      if (this.stepDistance >= stride) {
+        this.stepDistance %= stride;
+        this.stepSide *= -1;
+        game.sound("step", this.stepSide * (this.crouching ? 0.55 : 1));
       }
     }
 

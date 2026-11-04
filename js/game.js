@@ -456,7 +456,7 @@
 
     characterPositions() {
       return new Map([this.player, ...this.enemies, this.boss].filter(Boolean)
-        .map(entity => [entity, { x: entity.x, y: entity.y }]));
+        .map(entity => [entity, { x: entity.x, y: entity.y, onGround: entity.onGround }]));
     }
 
     resolveCharacterCollisions(previous = this.characterPositions()) {
@@ -537,6 +537,7 @@
 
       if (this.boss) this.boss.update(dt, this);
       this.resolveCharacterCollisions(previous);
+      this.player.updateMovementAudio(previous.get(this.player), this);
 
       this.projectiles.forEach((projectile) => {
         projectile.update(dt, this);

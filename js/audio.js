@@ -99,7 +99,7 @@
       }
       const now = this.ctx.currentTime;
       // A strike can hit several bodies at once. Give it one clear impact, not a volume spike.
-      if (['hit', 'parry', 'hurt'].includes(name) && now - (this.lastPlayed.get(name) ?? -1) < 0.055) return;
+      if ((['hit', 'parry', 'hurt'].includes(name) || name.startsWith('pickup')) && now - (this.lastPlayed.get(name) ?? -1) < 0.055) return;
       this.lastPlayed.set(name, now);
       this.synthesize(name, variation, now + 0.005);
     }
@@ -140,6 +140,38 @@
       const tone = (offset, duration, gain, from, to = from, type = 'sine') => this.voice(at + offset, duration, gain, from, to, type);
       const air = (offset, duration, gain, from, to) => this.voice(at + offset, duration, gain, from, to, 'sine', true);
       switch (name) {
+        case 'step': {
+          const strength = Math.max(0.4, Math.min(1, Math.abs(variation)));
+          tone(0, 0.07, 0.17 * strength, variation > 0 ? 155 : 125, 65);
+          air(0, 0.045, 0.10 * strength, variation > 0 ? 950 : 750, 280);
+          break;
+        }
+        case 'jump':
+          tone(0, 0.16, 0.14, 240, 600, 'triangle');
+          air(0, 0.08, 0.08, 800, 2000);
+          break;
+        case 'land':
+          tone(0, 0.13, 0.22, 125, 45);
+          air(0, 0.09, 0.12, 850, 240);
+          break;
+        case 'pickupCoffee':
+          tone(0, 0.11, 0.17, 330, 660);
+          tone(0.08, 0.13, 0.16, 880, 660);
+          tone(0.16, 0.23, 0.12, 1318.51);
+          break;
+        case 'pickupBrief':
+          air(0, 0.055, 0.09, 1000, 2300);
+          tone(0.02, 0.16, 0.17, 880, 880, 'triangle');
+          tone(0.10, 0.24, 0.16, 1320);
+          break;
+        case 'pickupAmmo':
+          air(0, 0.035, 0.17, 3000, 1100);
+          air(0.05, 0.045, 0.14, 2300, 900);
+          tone(0.06, 0.15, 0.16, 260, 520, 'triangle');
+          break;
+        case 'pickupRest':
+          [392, 523.25, 659.25].forEach((note, i) => tone(i * 0.09, 0.26, 0.13, note));
+          break;
         case 'start':
           // A bright ascending major arpeggio, then a celebratory chord (under one second).
           [523.25, 659.25, 783.99, 1046.5].forEach((note, i) => {

@@ -17,6 +17,68 @@ function setup() {
   return {game,window,canvas,ctx,listeners,document,docListeners};
 }
 function advance(game,seconds,hz=120){for(let i=0;i<Math.round(seconds*hz);i++){game.update(1/hz);game.input.afterFrame();}}
+test('each collected item plays its own cue once while standing on it',()=>{
+  for(const [type,cue] of [['coffee','pickupCoffee'],['brief','pickupBrief'],['stapler','pickupAmmo'],['toilet','pickupRest']]){
+    const {game,window}=setup(),sounds=[];game.sound=name=>sounds.push(name);
+    game.player.health=40;game.player.mind=30;game.player.ammo=0;
+    const item=new window.Pickup(type,game.player.x);game.pickups=[item];
+    for(let i=0;i<10;i++)game.updatePickups();
+    assert.deepEqual(sounds,[cue],type);assert.equal(item.used,true);
+    if(type==='coffee')assert.equal(game.player.health,82);
+    if(type==='brief')assert.ok(game.task.progress>0);
+    if(type==='stapler')assert.equal(game.player.ammo,5);
+    if(type==='toilet')assert.equal(game.player.mind,game.player.maxMind);
+  }
+});
+test('walking footsteps follow distance in both directions and at different refresh rates',()=>{
+  const counts=[];
+  for(const hz of [30,60,120])for(const direction of ['left','right']){
+    const {game}=setup(),steps=[];game.player.x=600;
+    game.sound=(name,side)=>{if(name==='step')steps.push(side);};
+    game.input.setKey(direction,true);game.last=1000;
+    for(let i=1;i<=hz*1.5;i++)game.loop(1000+i*1000/hz);
+    assert.ok(steps.length>=5&&steps.length<=6);
+    steps.slice(1).forEach((side,i)=>assert.equal(side,-steps[i]));counts.push(steps.length);
+  }
+  assert.equal(new Set(counts).size,1);
+});
+test('running is quicker, crouching is quieter, and stopping ends footsteps',()=>{
+  const counts=[];
+  for(const mode of ['walk','boost','crouch']){
+    const {game}=setup(),steps=[];game.sound=(name,side)=>{if(name==='step')steps.push(side);};
+    game.input.setKey('right',true);if(mode==='boost')game.player.speedBoost=4;
+    if(mode==='crouch')game.input.setKey('s',true);
+    advance(game,2);counts.push(steps.length);
+    if(mode==='crouch')assert.ok(steps.every(side=>Math.abs(side)===.55));
+    game.input.setKey('right',false);advance(game,1);assert.equal(steps.length,counts.at(-1));
+  }
+  assert.ok(counts[1]>counts[0]&&counts[0]>counts[2]);
+});
+test('idle, wall contact, blocked bodies, pauses and frozen controls have no footsteps',()=>{
+  for(const mode of ['idle','left-wall','right-wall','blocked','paused','frozen']){
+    const {game,window}=setup(),steps=[];game.bossGate=game.worldWidth+100;
+    game.sound=name=>{if(name==='step')steps.push(name);};
+    game.input.setKey(mode==='left-wall'?'left':'right',mode!=='idle');
+    if(mode==='left-wall')game.player.x=20;
+    if(mode==='right-wall')game.player.x=game.worldWidth-60;
+    if(mode==='blocked'){
+      const enemy=new window.Enemy('hr',game.worldWidth-52);enemy.update=()=>{};game.enemies=[enemy];
+      game.player.x=enemy.x-game.player.w-6;
+    }
+    if(mode==='paused')game.state='paused';
+    if(mode==='frozen')game.freezeTimer=10;
+    advance(game,1);assert.equal(steps.length,0,mode);
+  }
+});
+test('jump and landing sound once, with no footsteps in midair or on repeated grounded frames',()=>{
+  const {game}=setup(),sounds=[];game.sound=name=>sounds.push(name);
+  game.input.setKey('right',true);game.input.setKey('space',true);advance(game,.3);
+  assert.equal(game.player.onGround,false);assert.deepEqual(sounds,['jump']);
+  game.input.setKey('right',false);game.input.setKey('space',false);advance(game,1);
+  assert.deepEqual(sounds,['jump','land']);
+  game.loadFloor(1,false);game.enemies=[];game.pickups=[];game.level={...game.level,hazards:[]};
+  advance(game,.3);assert.deepEqual(sounds,['jump','land']);
+});
 test('opening sound plays on a new run, never on resume or a floor transition',()=>{
   const {game}=setup();const sounds=[];game.audio.play=name=>sounds.push(name);
   game.startGame();assert.deepEqual(sounds,['start']);

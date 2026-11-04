@@ -80,7 +80,7 @@ test('muting or a delayed resume cannot replay the opening later', async () => {
 
 test('all sound palettes schedule bounded voices that disconnect after playback', () => {
   const s = setup(); s.gesture(); s.sound.setActive(true);
-  for (const name of ['start', 'swing', 'hit', 'reflect', 'parry', 'thrust', 'ranged', 'ultimate', 'hurt']) {
+  for (const name of ['start', 'swing', 'hit', 'reflect', 'parry', 'thrust', 'ranged', 'ultimate', 'hurt', 'step', 'jump', 'land', 'pickupCoffee', 'pickupBrief', 'pickupAmmo', 'pickupRest']) {
     const before = s.sources.length; s.sound.ctx.currentTime += 1; s.sound.play(name, 3);
     assert.ok(s.sources.length > before, name);
     for (const source of s.sources.slice(before)) {
@@ -116,4 +116,13 @@ test('saved mute, unavailable Web Audio and blocked storage remain safe', () => 
   const muted = setup({ muted: true }); muted.gesture(); assert.equal(muted.contexts.length, 0);
   const unsupported = setup({ supported: false }); unsupported.gesture(); unsupported.sound.setActive(true); unsupported.sound.play('start'); assert.equal(unsupported.sources.length, 0);
   const privateMode = setup({ brokenStorage: true }); privateMode.gesture(); privateMode.sound.setMuted(true); privateMode.sound.setMuted(false); assert.equal(privateMode.contexts.length, 1);
+});
+
+test('movement and collection sounds obey mute, pause and background settings', () => {
+  const s=setup();s.gesture();s.sound.setActive(true);
+  const cues=['step','jump','land','pickupCoffee','pickupBrief','pickupAmmo','pickupRest'];
+  s.sound.setMuted(true);cues.forEach(name=>s.sound.play(name));assert.equal(s.sources.length,0);
+  s.sound.setMuted(false);s.sound.setActive(false);cues.forEach(name=>s.sound.play(name));assert.equal(s.sources.length,0);
+  s.sound.setActive(true);s.document.hidden=true;cues.forEach(name=>s.sound.play(name));assert.equal(s.sources.length,0);
+  s.document.hidden=false;cues.forEach(name=>s.sound.play(name));assert.ok(s.sources.length>0);
 });
