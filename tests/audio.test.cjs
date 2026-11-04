@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function setup({ muted = false, suspended = false, supported = true, brokenStorage = false } = {}) {
+function setup({ muted = false, suspended = false, supported = true, brokenStorage = false, mobileGate = false, legacyConstructor = false, sessionDenied = false } = {}) {
   const listeners = {}, sources = [], contexts = [], storage = new Map([['shechu-sound-muted', muted ? '1' : '0']]);
-  let finishResume;
+  const pendingResumes = []; let eventType = null;
   const param = () => ({ value: 0, events: [],
     setValueAtTime(...args) { this.events.push(['set', ...args]); },
     linearRampToValueAtTime(...args) { this.events.push(['linear', ...args]); },
@@ -19,14 +19,21 @@ function setup({ muted = false, suspended = false, supported = true, brokenStora
     start(at) { this.started = at; }, stop(at) { (this.stops ||= []).push(at); }
   });
   class Context {
-    constructor() { this.state = suspended ? 'suspended' : 'running'; this.currentTime = 2; this.sampleRate = 8000; this.destination = {}; contexts.push(this); }
+    constructor(options) { if (legacyConstructor && options) throw new TypeError('unsupported options'); this.state = suspended || mobileGate ? 'suspended' : 'running'; this.currentTime = 2; this.sampleRate = 8000; this.destination = {}; contexts.push(this); }
     createGain() { return node(); }
     createDynamicsCompressor() { return node(); }
     createBiquadFilter() { return node(); }
-    createBuffer(_, length) { return { getChannelData: () => new Float32Array(length) }; }
+    createBuffer(_, length) { return { length, getChannelData: () => new Float32Array(length) }; }
     createBufferSource() { const n = node(); sources.push(n); return n; }
     createOscillator() { const n = node(); sources.push(n); return n; }
-    resume() { return new Promise(resolve => { finishResume = () => { this.state = 'running'; resolve(); }; }); }
+    resume() {
+      this.resumeCalls = (this.resumeCalls || 0) + 1;
+      if (mobileGate && ['pointerup', 'touchend', 'click', 'keydown'].includes(eventType)) {
+        this.state = 'running'; if (this.onstatechange) this.onstatechange();
+        pendingResumes.splice(0).forEach(fn => fn()); return Promise.resolve();
+      }
+      return new Promise(resolve => { pendingResumes.push(() => { this.state = 'running'; if (this.onstatechange) this.onstatechange(); resolve(); }); });
+    }
   }
   const buttons = [0, 1].map(() => ({ attrs: {}, label: {}, handlers: {}, classList: { toggle() {} },
     addEventListener(event, fn) { this.handlers[event] = fn; },
@@ -35,24 +42,35 @@ function setup({ muted = false, suspended = false, supported = true, brokenStora
   const document = { hidden: false, querySelectorAll: () => buttons,
     addEventListener(event, fn) { (listeners[event] ||= []).push(fn); }
   };
-  const window = { AudioContext: supported ? Context : undefined,
+  const window = { navigator: { audioSession: sessionDenied ? Object.defineProperty({}, 'type', { set() { throw Error('denied'); } }) : {} }, AudioContext: supported ? Context : undefined,
     localStorage: { getItem(key) { if (brokenStorage) throw Error('blocked'); return storage.get(key); },
       setItem(key, value) { if (brokenStorage) throw Error('blocked'); storage.set(key, value); } }
   };
   const clock = { now: 100 };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/audio.js'), 'utf8'), { window, document, performance: { now: () => clock.now }, Math });
   const sound = new window.GameAudio();
-  const gesture = () => listeners.pointerdown[0]({ target: { closest: () => true } });
-  return { sound, gesture, sources, contexts, document, listeners, buttons, storage, clock, finishResume: () => finishResume() };
+  const gesture = (type = 'pointerdown', inside = true, soundButton = false) => {
+    eventType = type;
+    (listeners[type] || []).forEach(fn => fn({ type, pointerType: 'touch', target: { closest: selector => selector === '.cabinet' ? inside : soundButton } }));
+    eventType = null;
+  };
+  const clickSound = (index = 0) => { eventType = 'click'; buttons[index].handlers.click(); eventType = null; };
+  return { sound, gesture, clickSound, get sources() { return sources.filter(n => !n.buffer || n.buffer.length !== 1); },
+    allSources: sources, contexts, document, listeners, buttons, storage, clock, window,
+    finishResume: () => pendingResumes.splice(0).forEach(fn => fn()) };
+
 }
 
-test('no audio context or sound before a gesture; both mute controls persist together', () => {
+test('audio waits for a gesture; enable previews once and mute controls persist together', () => {
   const s = setup(); s.sound.setActive(true); s.sound.play('start');
   assert.equal(s.contexts.length, 0); assert.equal(s.sources.length, 0);
-  s.buttons[0].handlers.click(); s.gesture();
-  assert.equal(s.contexts.length, 0); assert.equal(s.storage.get('shechu-sound-muted'), '1');
+  s.buttons.forEach(b => assert.equal(b.label.textContent, '点此启声'));
+  s.clickSound(); assert.equal(s.contexts.length, 1); assert.ok(s.sources.length > 0);
+  s.buttons.forEach(b => assert.equal(b.label.textContent, '音效开'));
+  s.clickSound(); s.gesture();
+  assert.equal(s.storage.get('shechu-sound-muted'), '1');
   s.buttons.forEach(b => { assert.equal(b.attrs['aria-pressed'], 'false'); assert.equal(b.label.textContent, '已静音'); });
-  s.buttons[1].handlers.click(); s.sound.play('start');
+  s.clickSound(1); s.sound.play('start');
   assert.equal(s.contexts.length, 1); assert.ok(s.sources.length > 8);
   s.buttons.forEach(b => assert.equal(b.attrs['aria-pressed'], 'true'));
 });
@@ -125,4 +143,60 @@ test('movement and collection sounds obey mute, pause and background settings', 
   s.sound.setMuted(false);s.sound.setActive(false);cues.forEach(name=>s.sound.play(name));assert.equal(s.sources.length,0);
   s.sound.setActive(true);s.document.hidden=true;cues.forEach(name=>s.sound.play(name));assert.equal(s.sources.length,0);
   s.document.hidden=false;cues.forEach(name=>s.sound.play(name));assert.ok(s.sources.length>0);
+});
+
+test('mobile release unlocks audio when pointerdown is blocked and no click is delivered', async () => {
+  for (const release of ['pointerup','touchend']) {
+    const s=setup({mobileGate:true});s.gesture('pointerdown');s.sound.setActive(true);
+    s.sound.play('start');s.sound.play('swing');
+    assert.equal(s.sound.ctx.state,'suspended');assert.equal(s.sources.length,0);
+    assert.equal(s.buttons[0].label.textContent,'点此启声');
+    const cues=[];const synth=s.sound.synthesize.bind(s.sound);s.sound.synthesize=(name,...args)=>{cues.push(name);synth(name,...args);};
+    s.gesture(release);await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(s.sound.ctx.state,'running');assert.deepEqual(cues,['start']);
+    s.gesture('touchend');s.gesture('click');assert.deepEqual(cues,['start']);
+    assert.equal(s.contexts.length,1);assert.equal(s.buttons[0].label.textContent,'音效开');
+  }
+});
+test('mobile retries remain bounded, prime the context silently, and select supported playback audio',()=>{
+  const s=setup({mobileGate:true});
+  for(let i=0;i<20;i++)s.gesture('pointerdown');
+  assert.equal(s.contexts.length,1);assert.equal(s.allSources.length,1);
+  assert.equal(s.allSources[0].buffer.length,1);assert.equal(s.allSources[0].started,0);
+  assert.equal(s.window.navigator.audioSession.type,'playback');
+  s.gesture('pointerup');assert.equal(s.sound.ctx.state,'running');
+  s.allSources[0].onended();assert.equal(s.allSources[0].disconnected,true);
+  const legacy=setup({legacyConstructor:true,sessionDenied:true});legacy.gesture();assert.equal(legacy.contexts.length,1);assert.equal(legacy.sound.ctx.state,'running');
+});
+test('sound button retries blocked audio and previews it instead of accidentally muting',async()=>{
+  const s=setup({mobileGate:true});s.gesture('pointerdown');
+  s.gesture('pointerup',true,true);assert.equal(s.sound.ctx.state,'suspended');
+  s.clickSound();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.sound.muted,false);assert.equal(s.sound.ctx.state,'running');assert.ok(s.sources.length>0);
+  assert.equal(s.buttons[0].label.textContent,'音效开');
+  s.clickSound();assert.equal(s.sound.muted,true);assert.equal(s.storage.get('shechu-sound-muted'),'1');
+});
+test('interruption and background discard old sounds and resume on the next mobile release',async()=>{
+  const s=setup({mobileGate:true});s.gesture('touchend');s.sound.setActive(true);s.sound.play('swing');
+  s.document.hidden=true;s.listeners.visibilitychange[0]();s.sound.ctx.state='interrupted';s.sound.ctx.onstatechange();
+  const count=s.sources.length;s.sound.play('hit');assert.equal(s.sources.length,count);
+  s.document.hidden=false;s.listeners.visibilitychange[0]();assert.equal(s.buttons[0].label.textContent,'点此启声');
+  s.gesture('pointerdown');assert.equal(s.sound.ctx.state,'interrupted');
+  s.gesture('pointerup');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.sound.ctx.state,'running');assert.equal(s.sources.length,count);
+  s.sound.ctx.currentTime+=1;s.sound.play('swing');assert.ok(s.sources.length>count);
+});
+test('closed contexts recreate on a gesture and stale resume cannot replay into the new context',async()=>{
+  const s=setup({suspended:true});s.gesture();const old=s.sound.ctx;
+  s.sound.setActive(true);s.sound.play('start');old.state='closed';old.onstatechange();
+  s.gesture('touchend');assert.equal(s.contexts.length,2);assert.notEqual(s.sound.ctx,old);
+  s.finishResume();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.sources.length,0);assert.equal(s.sound.pendingStart,null);
+  s.sound.play('hit');assert.ok(s.sources.length>0);
+});
+test('outside gestures and remembered mute never create audio or change the audio route',()=>{
+  const outside=setup();outside.gesture('pointerdown',false);outside.gesture('touchend',false);
+  assert.equal(outside.contexts.length,0);assert.equal(outside.window.navigator.audioSession.type,undefined);
+  const muted=setup({muted:true});muted.gesture('pointerdown');muted.gesture('touchend');
+  assert.equal(muted.contexts.length,0);assert.equal(muted.window.navigator.audioSession.type,undefined);
 });

@@ -5,6 +5,7 @@
       this.pressed = {};
       this.lastDirTap = { left: 0, right: 0 };
       this.dashDir = 0;
+      this.resetVersion = 0;
 
       window.addEventListener("keydown", (event) => {
         if (event.target.closest && event.target.closest('button') && (event.key === 'Enter' || event.key === ' ')) return;
@@ -27,6 +28,7 @@
     }
 
     reset() {
+      this.resetVersion += 1;
       this.down = {};
       this.pressed = {};
       this.dashDir = 0;
@@ -76,18 +78,25 @@
           .map((key) => this.normalize(key))
           .filter(Boolean);
         if (keys.length === 0) return;
+        const activateOnRelease = keys.length === 1 && keys[0] === "enter";
+        let armed = false, armVersion = this.resetVersion;
 
         const press = (event) => {
           event.preventDefault();
           button.classList.add("is-pressed");
+          armed = true;
+          armVersion = this.resetVersion;
           if (event.pointerId !== undefined && button.setPointerCapture) {
             try { button.setPointerCapture(event.pointerId); } catch (error) { /* ignore released pointers */ }
           }
-          keys.forEach((key) => this.setKey(key, true));
+          if (!activateOnRelease) keys.forEach((key) => this.setKey(key, true));
         };
         const release = (event) => {
           event.preventDefault();
           button.classList.remove("is-pressed");
+          // Keep the start screen in place until touch release has unlocked audio.
+          if (activateOnRelease && armed && armVersion === this.resetVersion && event.type === "pointerup") keys.forEach(key => this.setKey(key, true));
+          armed = false;
           keys.forEach((key) => this.setKey(key, false));
         };
 

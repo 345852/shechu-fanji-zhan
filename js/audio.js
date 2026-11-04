@@ -7,42 +7,75 @@
       this.voices = new Set();
       this.lastPlayed = new Map();
       this.pendingStart = null;
+      this.pendingPreview = null;
+      this.gestureInGame = false;
       this.muted = false;
       try { this.muted = window.localStorage.getItem('shechu-sound-muted') === '1'; } catch (_) { /* storage may be unavailable */ }
       this.buttons = Array.from(document.querySelectorAll('[data-sound-toggle]'));
-      this.buttons.forEach(button => button.addEventListener('click', () => this.setMuted(!this.muted)));
+      this.buttons.forEach(button => button.addEventListener('click', () => {
+        // A blocked context needs another user gesture, not a toggle back to mute.
+        if (this.muted) this.setMuted(false, true);
+        else if (!this.ctx || this.ctx.state !== 'running') this.unlock(true);
+        else this.setMuted(true);
+      }));
       this.syncButtons();
-      // Resume inside the gesture, before the animation loop consumes the action.
-      const activate = event => {
-        if (event.target.closest && event.target.closest('.cabinet')) this.unlock();
+      const inGame = event => event.target.closest && event.target.closest('.cabinet');
+      const isSoundButton = event => event.target.closest && event.target.closest('[data-sound-toggle]');
+      // Touch/pen activation is granted on release. Game controls may suppress click.
+      const begin = event => {
+        this.gestureInGame = !!inGame(event) && !isSoundButton(event);
+        if (this.gestureInGame) this.unlock();
       };
-      document.addEventListener('pointerdown', activate, true);
-      document.addEventListener('click', activate, true);
-      document.addEventListener('keydown', event => {
-        if (!event.repeat && /^(Enter| |[adwspjklv123qe]|Arrow(?:Left|Right|Up|Down))$/i.test(event.key)) this.unlock();
+      const end = event => {
+        const activate = this.gestureInGame || inGame(event);
+        this.gestureInGame = false;
+        if (activate && !isSoundButton(event)) this.unlock();
+      };
+      document.addEventListener('pointerdown', begin, true);
+      document.addEventListener('pointerup', end, true);
+      document.addEventListener('touchstart', begin, { capture: true, passive: true });
+      document.addEventListener('touchend', end, { capture: true, passive: true });
+      document.addEventListener('touchcancel', () => { this.gestureInGame = false; }, true);
+      document.addEventListener('click', event => {
+        if (inGame(event) && !isSoundButton(event)) this.unlock();
       }, true);
-      document.addEventListener('visibilitychange', () => { if (document.hidden) this.stop(); });
-    }
-
-    syncButtons() {
-      this.buttons.forEach(button => {
-        button.setAttribute('aria-pressed', String(!this.muted));
-        button.title = this.muted ? '开启游戏音效' : '关闭游戏音效';
-        button.classList.toggle('is-muted', this.muted);
-        button.querySelector('span').textContent = this.muted ? '已静音' : '音效开';
+      document.addEventListener('keydown', event => {
+        if (!isSoundButton(event) && !event.repeat && /^(Enter| |[adwspjklv123qe]|Arrow(?:Left|Right|Up|Down))$/i.test(event.key)) this.unlock();
+      }, true);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { this.gestureInGame = false; this.stop(); }
+        this.syncButtons();
       });
     }
 
-    setMuted(muted) {
+    syncButtons() {
+      const supported = !!(window.AudioContext || window.webkitAudioContext);
+      const ready = !!this.ctx && this.ctx.state === 'running';
+      const label = this.muted ? '已静音' : !supported ? '声音不可用' : ready ? '音效开' : '点此启声';
+      this.buttons.forEach(button => {
+        button.setAttribute('aria-pressed', String(!this.muted && ready));
+        button.title = this.muted ? '开启游戏音效' : ready ? '关闭游戏音效' : '点击启动声音并试听';
+        button.classList.toggle('is-muted', this.muted);
+        button.querySelector('span').textContent = label;
+      });
+    }
+
+    setMuted(muted, preview = false) {
       this.muted = muted;
       try { window.localStorage.setItem('shechu-sound-muted', muted ? '1' : '0'); } catch (_) { /* optional preference */ }
       if (muted) this.stop();
-      else this.unlock();
+      else this.unlock(preview);
       this.syncButtons();
     }
 
     createGraph(context) {
       this.ctx = context;
+      this.primer = null;
+      context.onstatechange = () => {
+        if (this.ctx !== context) return;
+        if (context.state === 'running') this.finishUnlock(context);
+        else { this.stop(); this.syncButtons(); }
+      };
       this.master = context.createGain();
       this.master.gain.value = 0.52;
       const limiter = context.createDynamicsCompressor();
@@ -58,20 +91,64 @@
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     }
 
-    unlock() {
+    finishUnlock(context) {
+      if (context !== this.ctx) return;
+      this.syncButtons();
+      if (context.state !== 'running' || this.muted || document.hidden) return;
+      const opening = this.pendingStart, preview = this.pendingPreview;
+      this.pendingStart = null;
+      this.pendingPreview = null;
+      if (opening !== null && performance.now() - opening < 500 && this.active) this.play('start');
+      else if (preview !== null && performance.now() - preview < 500) this.synthesize('parry');
+    }
+
+    prime(context) {
+      if (this.primer) return;
+      // Start a silent one-sample buffer in the gesture itself for older mobile WebViews.
+      const source = context.createBufferSource();
+      this.primer = source;
+      source.buffer = context.createBuffer(1, 1, context.sampleRate);
+      source.connect(context.destination);
+      source.onended = () => {
+        source.disconnect();
+        if (this.primer === source) this.primer = null;
+      };
+      source.start(0);
+      source.stop(context.currentTime + 0.001);
+    }
+
+    unlock(preview = false) {
       if (this.muted || document.hidden) return;
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
+      if (preview) this.pendingPreview = performance.now();
       try {
-        if (!this.ctx) this.createGraph(new AudioContext({ latencyHint: 'interactive' }));
-        if (this.ctx.state === 'running') return;
-        // Only the opening fanfare may wait briefly for activation; never replay old attacks.
-        Promise.resolve(this.ctx.resume()).then(() => {
-          const pending = this.pendingStart;
-          this.pendingStart = null;
-          if (pending !== null && performance.now() - pending < 500) this.play('start');
-        }).catch(() => { this.pendingStart = null; });
-      } catch (_) { /* Sound is optional; the game remains playable. */ }
+        // When supported, use the media playback route rather than ambient/ringer audio.
+        try { if (window.navigator && window.navigator.audioSession) window.navigator.audioSession.type = 'playback'; } catch (_) { /* optional API */ }
+        let created = false;
+        if (!this.ctx || this.ctx.state === 'closed') {
+          let context;
+          try { context = new AudioContext({ latencyHint: 'interactive' }); }
+          catch (_) { context = new AudioContext(); }
+          this.voices.clear();
+          this.lastPlayed.clear();
+          this.createGraph(context);
+          created = true;
+        }
+        const context = this.ctx;
+        if (created || context.state !== 'running') {
+          try { this.prime(context); } catch (_) {
+            if (this.primer) this.primer.disconnect();
+            this.primer = null;
+          }
+        }
+        if (context.state === 'running') { this.finishUnlock(context); return; }
+        // Retry in every real gesture, even if an earlier resume promise is still pending.
+        Promise.resolve(context.resume()).then(() => this.finishUnlock(context)).catch(() => {
+          if (context === this.ctx) this.syncButtons();
+        });
+        this.syncButtons();
+      } catch (_) { this.syncButtons(); /* Sound is optional; gameplay stays available. */ }
     }
 
     setActive(active) {
@@ -81,6 +158,7 @@
 
     stop() {
       this.pendingStart = null;
+      this.pendingPreview = null;
       this.lastPlayed.clear();
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
